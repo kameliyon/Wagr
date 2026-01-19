@@ -1,8 +1,0 @@
-{
-  "imports": {
-    "@web3auth/base": "./@web3auth/base.js",
-    "@web3auth/openlogin-adapter": "./@web3auth/openlogin-adapter.js",
-    "@web3auth/web3auth": "./@web3auth/web3auth.js",
-    "openpgp": "./openpgp.js"
-  }
-}

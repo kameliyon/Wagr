@@ -1,9 +1,0 @@
-﻿<MudTextField 
-    @bind-Value="Cvv"
-    InputMode="InputMode.numeric"
-    InputType="InputType.Password"
-    Label="CVV"
-    Variant="Variant.Text"
-    Mask="@(new PatternMask("000"))"
-    Validation="@(new Func<string, IEnumerable<string>>(Validate))"
-/>
