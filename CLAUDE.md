@@ -8,51 +8,69 @@ WAGR is a Web3 application for managing payments for Fantasy sports leagues. Use
 
 ## Technology Stack
 
-- **Frontend**: React/Next.js web application
-- **Backend**: Go microservices
-- **Database**: PostgreSQL with Redis caching
-- **Blockchain**: Ethereum Testnet or Cardano with Solidity/smart contracts
-- **Monitoring**: Prometheus/Grafana with Discord/Email alerts
+- **Frontend**: React/Next.js (planned)
+- **Backend**: Go microservices with Chi router
+- **Database**: PostgreSQL with Redis caching (planned)
+- **Blockchain**: Ethereum Testnet or Cardano (planned)
 
 ## Build Commands
 
-*Commands will be added as services are implemented. Expected patterns:*
+```bash
+# Build all packages
+go build ./...
 
-**Go Services:**
-- `go build ./...` - Build all services
-- `go test ./...` - Run all tests
-- `go run cmd/<service>/main.go` - Run a specific service
+# Run tests
+go test ./...
 
-**Frontend:**
-- `npm install` - Install dependencies
-- `npm run dev` - Run development server
-- `npm run build` - Production build
+# Run specific test package with verbose output
+go test ./internal/fantasy/sleeper/... -v
+
+# Start API Gateway
+go run cmd/gateway/main.go
+```
+
+## Project Structure
+
+```
+cmd/
+└── gateway/
+    └── main.go              # API Gateway server (Chi router, port 8080)
+
+internal/
+└── fantasy/
+    └── sleeper/
+        ├── client.go        # Sleeper API HTTP client
+        ├── client_test.go   # Integration tests
+        └── models.go        # Data structures (User, League, Roster, Team)
+```
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/sleeper/user/{username}` | Lookup Sleeper user by username |
+| GET | `/api/sleeper/user/{userId}/leagues` | Get user's NFL leagues (query: ?season=2024) |
+| GET | `/api/sleeper/league/{leagueId}` | Get league details |
+| GET | `/api/sleeper/league/{leagueId}/teams` | Get teams with rosters and owner info |
+| GET | `/health` | Health check |
 
 ## Architecture
 
-### Service Overview
+### Current Implementation
 
-| Service | Port | Responsibility |
-|---------|------|----------------|
-| API Gateway | 8080 | Routes requests to core services |
-| Auth Service | - | JWT authentication, user management |
-| League Service | - | League CRUD operations |
-| Payment Service | - | Entry fee processing |
-| Oracle Service | - | Score fetching from fantasy platforms |
-| Contract Manager | - | Blockchain interactions |
+- **API Gateway** (`cmd/gateway`) - Chi-based HTTP server handling routing and middleware
+- **Sleeper Client** (`internal/fantasy/sleeper`) - HTTP client for Sleeper Fantasy API integration
 
-### Core Layers
+### Planned Services
 
-1. **Frontend Layer** - React/Next.js app with wallet connection (MetaMask, WalletConnect)
-2. **API Layer** - Go services behind API Gateway (Auth, League, Payment)
-3. **Background Services** - Oracle workers (ESPN, Yahoo, Sleeper), Cron Scheduler, Contract Manager
-4. **Data Layer** - PostgreSQL (users, leagues, members, payouts, transactions, scores) + Redis cache
-5. **Blockchain Layer** - Smart contracts: League Factory (deploys new leagues), League Contract (per-league instance), Payout Contract (distribution rules)
+| Service | Responsibility |
+|---------|----------------|
+| Auth Service | JWT authentication, user management |
+| League Service | League CRUD operations |
+| Payment Service | Entry fee processing |
+| Oracle Service | Score fetching from fantasy platforms |
+| Contract Manager | Blockchain interactions |
 
-### Data Flow
+### External APIs
 
-- Frontend connects to API Gateway (port 8080) for all backend operations
-- Frontend connects directly to blockchain for wallet/contract interactions
-- Oracle workers fetch scores from ESPN/Yahoo/Sleeper APIs on schedule
-- Contract Manager handles all smart contract deployments and interactions
-- League and Oracle services communicate with Contract Manager for blockchain operations
+- **Sleeper API** (`https://api.sleeper.app/v1`) - Public API, no auth required, 1000 req/min limit
