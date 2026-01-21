@@ -74,3 +74,7 @@ internal/
 ### External APIs
 
 - **Sleeper API** (`https://api.sleeper.app/v1`) - Public API, no auth required, 1000 req/min limit
+
+## Git Workflow
+
+- **Do not commit code** - Claude should not run `git commit` or `git push` unless explicitly asked by the user
