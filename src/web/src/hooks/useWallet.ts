@@ -11,7 +11,6 @@ export function useWallet() {
 
     // Wallet data
     address: midnight.walletState?.address ?? null,
-    publicKey: midnight.walletState?.publicKey ?? null,
     balance: midnight.walletState?.balance ?? null,
 
     // Auth data
