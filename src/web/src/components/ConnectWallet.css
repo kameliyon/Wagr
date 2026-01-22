@@ -1,0 +1,76 @@
+.connect-wallet {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.connect-wallet.authenticated {
+  background-color: var(--surface);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+}
+
+.wallet-connected {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.address {
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  background-color: var(--surface);
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+}
+
+.authenticated .address {
+  background-color: var(--surface-light);
+}
+
+.wallet-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background-color: var(--surface);
+  padding: 1rem;
+  border-radius: 8px;
+}
+
+.wallet-select p {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.wallet-option {
+  text-transform: capitalize;
+}
+
+.no-wallet {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  text-align: center;
+}
+
+.no-wallet p {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.no-wallet a {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+.no-wallet a:hover {
+  text-decoration: underline;
+}
+
+.error {
+  color: var(--error);
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
