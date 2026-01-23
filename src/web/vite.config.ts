@@ -7,6 +7,21 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Polyfill Node.js built-ins
+      buffer: 'buffer',
+      process: 'process/browser',
+    },
+  },
+  define: {
+    // Polyfill for Node.js globals required by @hashgraph/hashconnect
+    global: 'globalThis',
+    'process.env': {},
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      define: {
+        global: 'globalThis',
+      },
     },
   },
   server: {

@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useWallet } from '../hooks/useWallet'
+import type { WalletType } from '../types/wallet'
+import { formatAddress as formatWalletAddress, getWalletInstallLink, WALLET_DISPLAY_NAMES } from '../utils/walletConstants'
 import './ConnectWallet.css'
 
 export default function ConnectWallet() {
@@ -8,6 +10,8 @@ export default function ConnectWallet() {
         isConnecting,
         isAuthenticated,
         address,
+        accountId,
+        walletType,
         availableWallets,
         hasWallet,
         connect,
@@ -19,9 +23,9 @@ export default function ConnectWallet() {
     const [showWalletSelect, setShowWalletSelect] = useState(false)
     const [isAuthenticating, setIsAuthenticating] = useState(false)
 
-    const handleConnect = async (walletName: string) => {
+    const handleConnect = async (type: WalletType, walletName: string) => {
         try {
-            await connect(walletName)
+            await connect(type, walletName)
             setShowWalletSelect(false)
         } catch {
             // Error is handled by the provider
@@ -39,9 +43,16 @@ export default function ConnectWallet() {
         }
     }
 
-    const formatAddress = (addr: string) => {
-        console.log('Formatting address:', addr)
-        return `${addr.slice(0, 6)}...${addr.slice(-4)}`
+    const getDisplayAddress = () => {
+        if (!address || !walletType) return ''
+
+        // For Hedera, show account ID in full
+        if (walletType === 'hedera' && accountId) {
+            return accountId
+        }
+
+        // For other wallets, format the address
+        return formatWalletAddress(address, walletType)
     }
 
     // Not connected - show connect button
@@ -50,22 +61,28 @@ export default function ConnectWallet() {
             <div className="connect-wallet">
                 {!hasWallet ? (
                     <div className="no-wallet">
-                        <p>No Midnight wallet detected</p>
-                        <a href="https://www.lace.io/" target="_blank" rel="noopener noreferrer">
-                            Install Lace Wallet
-                        </a>
+                        <p>No wallet detected</p>
+                        <div className="install-links">
+                            <a href={getWalletInstallLink('lace') || '#'} target="_blank" rel="noopener noreferrer">
+                                Install Lace (Midnight)
+                            </a>
+                            <a href={getWalletInstallLink('hashpack') || '#'} target="_blank" rel="noopener noreferrer">
+                                Install HashPack (Hedera)
+                            </a>
+                        </div>
                     </div>
                 ) : showWalletSelect ? (
                         <div className="wallet-select">
                             <p>Select a wallet:</p>
                             {availableWallets.map((wallet) => (
                                 <button
-                                    key={wallet}
+                                    key={`${wallet.type}-${wallet.name}`}
                                     className="btn-secondary wallet-option"
-                                    onClick={() => handleConnect(wallet)}
+                                    onClick={() => handleConnect(wallet.type, wallet.name)}
                                     disabled={isConnecting}
                                 >
-                                    {wallet}
+                                    <span className="wallet-name">{wallet.displayName}</span>
+                                    <span className="wallet-type-badge">{WALLET_DISPLAY_NAMES[wallet.type]}</span>
                                 </button>
                             ))}
                             <button
@@ -79,7 +96,7 @@ export default function ConnectWallet() {
                             <button
                                 className="btn-primary"
                                 onClick={() => availableWallets.length === 1
-                                    ? handleConnect(availableWallets[0])
+                                    ? handleConnect(availableWallets[0].type, availableWallets[0].name)
                                     : setShowWalletSelect(true)
                                 }
                                 disabled={isConnecting}
@@ -97,7 +114,10 @@ export default function ConnectWallet() {
         return (
             <div className="connect-wallet">
                 <div className="wallet-connected">
-                    <span className="address">{address && formatAddress(address)}</span>
+                    <span className="address">
+                        {walletType && <span className="wallet-type-badge">{WALLET_DISPLAY_NAMES[walletType]}</span>}
+                        {getDisplayAddress()}
+                    </span>
                     <button
                         className="btn-primary"
                         onClick={handleAuthenticate}
@@ -117,7 +137,10 @@ export default function ConnectWallet() {
     // Fully authenticated
     return (
         <div className="connect-wallet authenticated">
-            <span className="address">{address && formatAddress(address)}</span>
+            <span className="address">
+                {walletType && <span className="wallet-type-badge">{WALLET_DISPLAY_NAMES[walletType]}</span>}
+                {getDisplayAddress()}
+            </span>
             <button className="btn-secondary" onClick={disconnect}>
                 Disconnect
             </button>

@@ -1,33 +1,36 @@
-import { useMidnight } from '../providers/MidnightProvider'
+import { useWallet as useWalletContext } from '../providers/WalletProvider'
 
-// Re-export the hook for convenience and potential future abstraction
+// Re-export the hook with additional computed properties
 export function useWallet() {
-  const midnight = useMidnight()
+  const wallet = useWalletContext()
 
   return {
     // Connection state
-    isConnected: midnight.isConnected,
-    isConnecting: midnight.isConnecting,
+    isConnected: wallet.isConnected,
+    isConnecting: wallet.isConnecting,
 
     // Wallet data
-    address: midnight.walletState?.address ?? null,
-    balance: midnight.walletState?.balance ?? null,
+    walletType: wallet.walletState?.type ?? null,
+    address: wallet.walletState?.address ?? null,
+    accountId: wallet.walletState?.accountId ?? null, // For Hedera
+    balance: wallet.walletState?.balance ?? null,
+    network: wallet.walletState?.network ?? null,
 
     // Auth data
-    user: midnight.user,
-    token: midnight.token,
-    isAuthenticated: !!midnight.user,
+    user: wallet.user,
+    token: wallet.token,
+    isAuthenticated: !!wallet.user,
 
     // Available wallets
-    availableWallets: midnight.availableWallets,
-    hasWallet: midnight.availableWallets.length > 0,
+    availableWallets: wallet.availableWallets,
+    hasWallet: wallet.availableWallets.length > 0,
 
     // Actions
-    connect: midnight.connect,
-    disconnect: midnight.disconnect,
-    authenticate: midnight.authenticate,
+    connect: wallet.connect,
+    disconnect: wallet.disconnect,
+    authenticate: wallet.authenticate,
 
     // Error state
-    error: midnight.error,
+    error: wallet.error,
   }
 }
