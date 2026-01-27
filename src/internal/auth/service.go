@@ -44,13 +44,13 @@ func NewService(db *pgxpool.Pool) *Service {
 
 // GetOrCreateNonce gets an existing user's nonce or creates a new user with a nonce
 func (s *Service) GetOrCreateNonce(ctx context.Context, walletAddress, walletType string) (*NonceResponse, error) {
-	// Default to 'midnight' for backwards compatibility during transition
+	// Default to 'hedera'
 	if walletType == "" {
-		walletType = "midnight"
+		walletType = "hedera"
 	}
 
 	// Validate wallet type
-	if walletType != "midnight" && walletType != "hedera" {
+	if walletType != "hedera" {
 		return nil, fmt.Errorf("unsupported wallet type: %s", walletType)
 	}
 
@@ -83,14 +83,14 @@ func (s *Service) GetOrCreateNonce(ctx context.Context, walletAddress, walletTyp
 
 // VerifySignature verifies the wallet signature and returns a JWT if valid
 func (s *Service) VerifySignature(ctx context.Context, req *VerifyRequest) (*AuthResponse, error) {
-	// Default to 'midnight' for backwards compatibility during transition
+	// Default to 'hedera'
 	walletType := req.WalletType
 	if walletType == "" {
-		walletType = "midnight"
+		walletType = "hedera"
 	}
 
 	// Validate wallet type
-	if walletType != "midnight" && walletType != "hedera" {
+	if walletType != "hedera" {
 		return nil, fmt.Errorf("unsupported wallet type: %s", walletType)
 	}
 
@@ -108,21 +108,11 @@ func (s *Service) VerifySignature(ctx context.Context, req *VerifyRequest) (*Aut
 		return nil, ErrUserNotFound
 	}
 
-	// Verify the signature based on wallet type
+	// Verify the signature
 	message := fmt.Sprintf("Sign this message to authenticate with WAGR:\n\nNonce: %s", user.Nonce)
-	var valid bool
-
-	switch walletType {
-	case "midnight":
-		valid, err = verifyMidnightSignature(req.PublicKey, message, req.Signature)
-	case "hedera":
-		valid, err = verifyHederaSignature(req.PublicKey, message, req.Signature, req.KeyType)
-	default:
-		return nil, fmt.Errorf("unsupported wallet type: %s", walletType)
-	}
+	valid, err := verifyHederaSignature(req.PublicKey, message, req.Signature, req.KeyType)
 
 	if err != nil || !valid {
-		fmt.Println("Signature verification error:", err)
 		return nil, ErrInvalidSignature
 	}
 
@@ -182,7 +172,7 @@ func (s *Service) ValidateToken(tokenString string) (*Claims, error) {
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 		walletType, _ := claims["wallet_type"].(string)
 		if walletType == "" {
-			walletType = "midnight" // Default for backwards compatibility
+			walletType = "hedera"
 		}
 		return &Claims{
 			UserID:        claims["user_id"].(string),
@@ -215,29 +205,6 @@ func generateNonce() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
-}
-
-// verifyMidnightSignature verifies an Ed25519 signature from a Midnight wallet
-func verifyMidnightSignature(publicKeyHex, message, signatureHex string) (bool, error) {
-	pubKeyBytes, err := hex.DecodeString(publicKeyHex)
-	if err != nil {
-		return false, fmt.Errorf("invalid public key hex: %w", err)
-	}
-
-	sigBytes, err := hex.DecodeString(signatureHex)
-	if err != nil {
-		return false, fmt.Errorf("invalid signature hex: %w", err)
-	}
-
-	if len(pubKeyBytes) != ed25519.PublicKeySize {
-		return false, fmt.Errorf("invalid public key length: expected %d, got %d", ed25519.PublicKeySize, len(pubKeyBytes))
-	}
-
-	if len(sigBytes) != ed25519.SignatureSize {
-		return false, fmt.Errorf("invalid signature length: expected %d, got %d", ed25519.SignatureSize, len(sigBytes))
-	}
-
-	return ed25519.Verify(pubKeyBytes, []byte(message), sigBytes), nil
 }
 
 // verifyHederaSignature verifies a signature from a Hedera wallet

@@ -1,8 +1,7 @@
-// Unified wallet provider supporting multiple wallet types
+// Wallet provider for Hedera wallet integration
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react'
 import type { WalletType, WalletState, WalletStrategy, AvailableWallet } from '../types/wallet'
-import { MidnightStrategy } from '../strategies/MidnightStrategy'
 import { HederaStrategy } from '../strategies/HederaStrategy'
 import { useWalletConfig } from './WalletConfig'
 import { getWalletDisplayName } from '../utils/walletConstants'
@@ -44,7 +43,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   // Initialize strategies
   const [strategies] = useState<Record<WalletType, WalletStrategy>>({
-    midnight: new MidnightStrategy(),
     hedera: new HederaStrategy(config.walletConnectProjectId),
   })
 

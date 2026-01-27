@@ -1,15 +1,15 @@
-// Common wallet type definitions for multi-wallet support
+// Common wallet type definitions
 
-export type WalletType = 'midnight' | 'hedera'
+export type WalletType = 'hedera'
 
 export interface WalletState {
   type: WalletType
   address: string
-  accountId?: string // For Hedera (format: 0.0.12345)
+  accountId?: string // Format: 0.0.12345
   balance?: string
   network?: string
   publicKey?: string
-  keyType?: string // 'ED25519' or 'ECDSA_SECP256K1' (for Hedera)
+  keyType?: string // 'ED25519' or 'ECDSA_SECP256K1'
 }
 
 export interface SignatureResult {
@@ -35,7 +35,7 @@ export interface WalletStrategy {
 
   /**
    * Get list of available wallet names for this type
-   * @returns Array of wallet names (e.g., ['lace', 'nami'] for Midnight)
+   * @returns Array of wallet names (e.g., ['hashpack'] for Hedera)
    */
   getAvailableWallets(): Promise<string[]>
 

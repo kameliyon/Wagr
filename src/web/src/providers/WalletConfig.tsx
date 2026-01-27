@@ -2,7 +2,7 @@
 
 import { createContext, useContext, ReactNode } from 'react'
 import type { WalletConfig } from '../types/wallet'
-import { MIDNIGHT_DEFAULT_NETWORK, HEDERA_DEFAULT_NETWORK } from '../utils/walletConstants'
+import { HEDERA_DEFAULT_NETWORK } from '../utils/walletConstants'
 
 const WalletConfigContext = createContext<WalletConfig | null>(null)
 
@@ -18,7 +18,6 @@ export function WalletConfigProvider({ children, walletConnectProjectId }: Walle
     const config: WalletConfig = {
         walletConnectProjectId: projectId,
         defaultNetwork: {
-            midnight: MIDNIGHT_DEFAULT_NETWORK,
             hedera: HEDERA_DEFAULT_NETWORK,
         },
     }

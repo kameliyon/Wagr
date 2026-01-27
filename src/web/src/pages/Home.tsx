@@ -47,14 +47,14 @@ export default function Home() {
           <div className="card">
             <h2>Get Started</h2>
             <p>
-              Connect your Midnight wallet to start managing your fantasy sports payments
+              Connect your Hedera wallet to start managing your fantasy sports payments
               on the blockchain.
             </p>
             <ul className="features">
               <li>Secure, transparent entry fee collection</li>
               <li>Automated payouts via smart contracts</li>
-              <li>Low transaction fees on Midnight Network</li>
-              <li>Privacy-preserving payments</li>
+              <li>Low transaction fees on Hedera Network</li>
+              <li>Fast, secure payments</li>
             </ul>
           </div>
         </div>

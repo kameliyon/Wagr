@@ -63,11 +63,8 @@ export default function ConnectWallet() {
                     <div className="no-wallet">
                         <p>No wallet detected</p>
                         <div className="install-links">
-                            <a href={getWalletInstallLink('lace') || '#'} target="_blank" rel="noopener noreferrer">
-                                Install Lace (Midnight)
-                            </a>
                             <a href={getWalletInstallLink('hashpack') || '#'} target="_blank" rel="noopener noreferrer">
-                                Install HashPack (Hedera)
+                                Install HashPack
                             </a>
                         </div>
                     </div>

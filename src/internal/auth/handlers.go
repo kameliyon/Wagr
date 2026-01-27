@@ -41,9 +41,9 @@ func (h *Handlers) GetNonce(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate wallet type if provided (defaults to 'midnight' in service for backwards compatibility)
-	if req.WalletType != "" && req.WalletType != "midnight" && req.WalletType != "hedera" {
-		respondError(w, http.StatusBadRequest, "wallet_type must be 'midnight' or 'hedera'")
+	// Validate wallet type if provided (defaults to 'hedera' in service)
+	if req.WalletType != "" && req.WalletType != "hedera" {
+		respondError(w, http.StatusBadRequest, "wallet_type must be 'hedera'")
 		return
 	}
 
@@ -69,9 +69,9 @@ func (h *Handlers) VerifySignature(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate wallet type if provided (defaults to 'midnight' in service for backwards compatibility)
-	if req.WalletType != "" && req.WalletType != "midnight" && req.WalletType != "hedera" {
-		respondError(w, http.StatusBadRequest, "wallet_type must be 'midnight' or 'hedera'")
+	// Validate wallet type if provided (defaults to 'hedera' in service)
+	if req.WalletType != "" && req.WalletType != "hedera" {
+		respondError(w, http.StatusBadRequest, "wallet_type must be 'hedera'")
 		return
 	}
 

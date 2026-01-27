@@ -39,19 +39,13 @@ export class HederaStrategy implements WalletStrategy {
     }
 
     async isAvailable(): Promise<boolean> {
-        try {
-            if (!HederaWalletConnect) {
-                const module = await import('@hashgraph/hedera-wallet-connect')
-                HederaWalletConnect = module
-            }
-            return true
-        } catch (err) {
-            console.error('Hedera Wallet Connect library not available:', err)
-            return false
-        }
+        // Always return true - we'll lazy load the library when connecting
+        // This avoids loading the heavy Hedera SDK on page load
+        return true
     }
 
     async getAvailableWallets(): Promise<string[]> {
+        // Return hashpack as available - WalletConnect will handle the actual connection
         return ['hashpack']
     }
 
