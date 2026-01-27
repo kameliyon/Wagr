@@ -8,7 +8,8 @@ import (
 type User struct {
 	ID            string    `json:"id"`
 	WalletAddress string    `json:"wallet_address"`
-	Nonce         string    `json:"-"` // Never expose nonce in JSON responses
+	WalletType    string    `json:"wallet_type"` // 'midnight' or 'hedera'
+	Nonce         string    `json:"-"`           // Never expose nonce in JSON responses
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
@@ -16,6 +17,7 @@ type User struct {
 // NonceRequest is the request body for getting a nonce
 type NonceRequest struct {
 	WalletAddress string `json:"wallet_address"`
+	WalletType    string `json:"wallet_type"` // 'midnight' or 'hedera'
 }
 
 // NonceResponse is returned when requesting a nonce
@@ -27,8 +29,10 @@ type NonceResponse struct {
 // VerifyRequest is the request body for verifying a signature
 type VerifyRequest struct {
 	WalletAddress string `json:"wallet_address"`
-	Signature     string `json:"signature"`     // Hex-encoded signature
-	PublicKey     string `json:"public_key"`    // Hex-encoded public key (for Midnight)
+	WalletType    string `json:"wallet_type"` // 'midnight' or 'hedera'
+	Signature     string `json:"signature"`   // Hex-encoded signature
+	PublicKey     string `json:"public_key"`  // Hex-encoded public key or account ID
+	KeyType       string `json:"key_type"`    // 'ED25519' or 'ECDSA_SECP256K1' (for Hedera)
 }
 
 // AuthResponse is returned after successful authentication
@@ -41,6 +45,7 @@ type AuthResponse struct {
 type Claims struct {
 	UserID        string `json:"user_id"`
 	WalletAddress string `json:"wallet_address"`
+	WalletType    string `json:"wallet_type"`
 }
 
 // ErrorResponse represents an API error

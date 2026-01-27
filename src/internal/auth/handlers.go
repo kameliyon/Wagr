@@ -41,7 +41,13 @@ func (h *Handlers) GetNonce(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.service.GetOrCreateNonce(r.Context(), req.WalletAddress)
+	// Validate wallet type if provided (defaults to 'midnight' in service for backwards compatibility)
+	if req.WalletType != "" && req.WalletType != "midnight" && req.WalletType != "hedera" {
+		respondError(w, http.StatusBadRequest, "wallet_type must be 'midnight' or 'hedera'")
+		return
+	}
+
+	resp, err := h.service.GetOrCreateNonce(r.Context(), req.WalletAddress, req.WalletType)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to generate nonce")
 		return
@@ -60,6 +66,12 @@ func (h *Handlers) VerifySignature(w http.ResponseWriter, r *http.Request) {
 
 	if req.WalletAddress == "" || req.Signature == "" || req.PublicKey == "" {
 		respondError(w, http.StatusBadRequest, "wallet_address, signature, and public_key are required")
+		return
+	}
+
+	// Validate wallet type if provided (defaults to 'midnight' in service for backwards compatibility)
+	if req.WalletType != "" && req.WalletType != "midnight" && req.WalletType != "hedera" {
+		respondError(w, http.StatusBadRequest, "wallet_type must be 'midnight' or 'hedera'")
 		return
 	}
 
