@@ -9,11 +9,13 @@ export interface WalletState {
   balance?: string
   network?: string
   publicKey?: string
+  keyType?: string // 'ED25519' or 'ECDSA_SECP256K1' (for Hedera)
 }
 
 export interface SignatureResult {
   signature: string
   publicKey: string
+  keyType?: string // 'ED25519' or 'ECDSA_SECP256K1'
 }
 
 export interface AvailableWallet {

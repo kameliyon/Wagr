@@ -170,7 +170,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       }
 
       const { message } = await nonceResponse.json()
-      console.log('Step 2: Got message to sign:', message)
 
       // Step 2: Sign the message with wallet
       const signResult = await activeStrategy.signMessage(message, walletState)
@@ -185,8 +184,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         wallet_type: walletState.type,
         signature: signResult.signature,
         public_key: signResult.publicKey,
+        key_type: signResult.keyType, // 'ED25519' or 'ECDSA_SECP256K1' for Hedera
       }
-      console.log('Step 4: Verifying signature...')
+      console.log('Step 4: Verifying signature...', { keyType: signResult.keyType })
 
       const verifyResponse = await fetch('/api/auth/verify', {
         method: 'POST',

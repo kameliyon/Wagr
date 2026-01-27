@@ -6,243 +6,410 @@ import { HEDERA_DEFAULT_NETWORK } from '../utils/walletConstants'
 
 // Hedera Wallet Connect types
 interface DAppConnector {
-  init(params: {
-    name: string
-    description: string
-    url: string
-    icons: string[]
-  }): Promise<void>
-  openModal(): Promise<void>
-  closeModal(): void
-  disconnect(): Promise<void>
-  signers?: any[]
-  signMessages(messages: Uint8Array[]): Promise<Uint8Array[]>
-  onSessionConnected?: (callback: (session: any) => void) => void
+    init(params: {
+        name: string
+        description: string
+        url: string
+        icons: string[]
+    }): Promise<void>
+    openModal(): Promise<void>
+    closeModal(): void
+    disconnect(): Promise<void>
+    signers?: any[]
+    signMessage(params: {
+        signerAccountId: string
+        message: string
+    }): Promise<{
+        signatureMap: any
+    }>
+    onSessionConnected?: (callback: (session: any) => void) => void
 }
 
 // Dynamic import placeholder
 let HederaWalletConnect: any = null
 
 export class HederaStrategy implements WalletStrategy {
-  readonly type = 'hedera' as const
-  private connector: DAppConnector | null = null
-  private projectId: string = ''
-  private connectionTimeout: NodeJS.Timeout | null = null
+    readonly type = 'hedera' as const
+    private connector: DAppConnector | null = null
+    private projectId: string = ''
+    private connectionTimeout: NodeJS.Timeout | null = null
 
-  constructor(projectId?: string) {
-    this.projectId = projectId || ''
-  }
-
-  async isAvailable(): Promise<boolean> {
-    try {
-      if (!HederaWalletConnect) {
-        const module = await import('@hashgraph/hedera-wallet-connect')
-        HederaWalletConnect = module
-      }
-      return true
-    } catch (err) {
-      console.error('Hedera Wallet Connect library not available:', err)
-      return false
-    }
-  }
-
-  async getAvailableWallets(): Promise<string[]> {
-    return ['hashpack']
-  }
-
-  async connect(_walletName: string, networkId?: string): Promise<WalletState> {
-    if (!this.projectId) {
-      throw new Error('WalletConnect Project ID not configured. Please set VITE_WALLETCONNECT_PROJECT_ID.')
+    constructor(projectId?: string) {
+        this.projectId = projectId || ''
     }
 
-    // Load required modules
-    if (!HederaWalletConnect) {
-      const module = await import('@hashgraph/hedera-wallet-connect')
-      HederaWalletConnect = module
-    }
-
-    const { LedgerId } = await import('@hashgraph/sdk')
-    const networkString = (networkId || HEDERA_DEFAULT_NETWORK) as HederaNetworkId
-
-    // Convert network string to LedgerId
-    const ledgerId = networkString === 'mainnet' ? LedgerId.MAINNET
-      : networkString === 'previewnet' ? LedgerId.PREVIEWNET
-      : LedgerId.TESTNET
-
-    try {
-      const { DAppConnector } = HederaWalletConnect
-
-      if (!DAppConnector) {
-        throw new Error('DAppConnector not found in @hashgraph/hedera-wallet-connect')
-      }
-
-      // Create connector
-      this.connector = new DAppConnector(
-        {
-          name: 'WAGR',
-          description: 'Web3 Fantasy Sports Payment Management',
-          url: window.location.origin,
-          icons: ['https://wagr.app/icon.png'],
-        },
-        ledgerId,
-        this.projectId
-      )
-
-      if (!this.connector) {
-        throw new Error('Failed to create DApp connector')
-      }
-
-      // Set up connection detection
-      const connectionPromise = new Promise<string>((resolve, reject) => {
-        this.connectionTimeout = setTimeout(() => {
-          clearInterval(pollInterval)
-          reject(new Error('Connection timeout. Please approve the connection in HashPack.'))
-        }, 90000)
-
-        // Listen for session connection event
-        if (this.connector?.onSessionConnected) {
-          this.connector.onSessionConnected((session: any) => {
-            if (this.connectionTimeout) {
-              clearTimeout(this.connectionTimeout)
-              this.connectionTimeout = null
+    async isAvailable(): Promise<boolean> {
+        try {
+            if (!HederaWalletConnect) {
+                const module = await import('@hashgraph/hedera-wallet-connect')
+                HederaWalletConnect = module
             }
-            clearInterval(pollInterval)
+            return true
+        } catch (err) {
+            console.error('Hedera Wallet Connect library not available:', err)
+            return false
+        }
+    }
 
-            const accountId = session?.accountIds?.[0]
-            if (accountId) {
-              resolve(accountId)
-            } else {
-              reject(new Error('No account ID in session'))
-            }
-          })
+    async getAvailableWallets(): Promise<string[]> {
+        return ['hashpack']
+    }
+
+    async connect(_walletName: string, networkId?: string): Promise<WalletState> {
+        if (!this.projectId) {
+            throw new Error('WalletConnect Project ID not configured. Please set VITE_WALLETCONNECT_PROJECT_ID.')
         }
 
-        // Polling fallback - check for connected signers
-        const pollInterval = setInterval(() => {
-          if ((this.connector as any)?.signers?.length > 0) {
-            const signer = (this.connector as any).signers[0]
-            let accountId: string | null = null
+        // Load required modules
+        if (!HederaWalletConnect) {
+            const module = await import('@hashgraph/hedera-wallet-connect')
+            HederaWalletConnect = module
+        }
 
-            // Extract account ID from signer
-            if (signer.getAccountId) {
-              accountId = signer.getAccountId().toString()
-            } else if (signer.accountId) {
-              accountId = typeof signer.accountId === 'string'
-                ? signer.accountId
-                : signer.accountId.toString()
+        const { LedgerId } = await import('@hashgraph/sdk')
+        const networkString = (networkId || HEDERA_DEFAULT_NETWORK) as HederaNetworkId
+
+        // Convert network string to LedgerId
+        const ledgerId = networkString === 'mainnet' ? LedgerId.MAINNET
+            : networkString === 'previewnet' ? LedgerId.PREVIEWNET
+                : LedgerId.TESTNET
+
+        try {
+            const { DAppConnector } = HederaWalletConnect
+
+            if (!DAppConnector) {
+                throw new Error('DAppConnector not found in @hashgraph/hedera-wallet-connect')
             }
 
-            if (accountId) {
-              if (this.connectionTimeout) {
+            // Create connector
+            this.connector = new DAppConnector(
+                {
+                    name: 'WAGR',
+                    description: 'Web3 Fantasy Sports Payment Management',
+                    url: window.location.origin,
+                    icons: ['https://wagr.app/icon.png'],
+                },
+                ledgerId,
+                this.projectId
+            )
+
+            if (!this.connector) {
+                throw new Error('Failed to create DApp connector')
+            }
+
+            // Set up connection detection - only need accountId, public key comes from signing
+            const connectionPromise = new Promise<string>((resolve, reject) => {
+                this.connectionTimeout = setTimeout(() => {
+                    clearInterval(pollInterval)
+                    reject(new Error('Connection timeout. Please approve the connection in HashPack.'))
+                }, 90000)
+
+                // Listen for session connection event
+                if (this.connector?.onSessionConnected) {
+                    this.connector.onSessionConnected((session: any) => {
+                        if (this.connectionTimeout) {
+                            clearTimeout(this.connectionTimeout)
+                            this.connectionTimeout = null
+                        }
+                        clearInterval(pollInterval)
+
+                        const accountId = session?.accountIds?.[0]
+                        if (accountId) {
+                            resolve(accountId)
+                        } else {
+                            reject(new Error('No account ID in session'))
+                        }
+                    })
+                }
+
+                // Polling fallback - check for connected signers
+                const pollInterval = setInterval(() => {
+                    if ((this.connector as any)?.signers?.length > 0) {
+                        const signer = (this.connector as any).signers[0]
+                        let accountId: string | null = null
+
+                        // Extract account ID from signer
+                        if (signer.getAccountId) {
+                            accountId = signer.getAccountId().toString()
+                        } else if (signer.accountId) {
+                            accountId = typeof signer.accountId === 'string'
+                                ? signer.accountId
+                                : signer.accountId.toString()
+                        }
+
+                        if (accountId) {
+                            if (this.connectionTimeout) {
+                                clearTimeout(this.connectionTimeout)
+                                this.connectionTimeout = null
+                            }
+                            clearInterval(pollInterval)
+                            resolve(accountId)
+                        }
+                    }
+                }, 1000)
+            })
+
+            // Initialize and open modal
+            await this.connector.init({
+                name: 'WAGR',
+                description: 'Web3 Fantasy Sports Payment Management',
+                url: window.location.origin,
+                icons: ['https://wagr.app/icon.png'],
+            })
+
+            await this.connector.openModal()
+
+            // Wait for connection
+            const accountId = await connectionPromise
+
+            // Close modal
+            try {
+                this.connector.closeModal()
+            } catch (err) {
+                console.error('Error closing modal:', err)
+            }
+
+            // Fetch the public key and key type from the Mirror Node API
+            // This is the recommended and secure way to get the public key
+            const { key: publicKey, keyType } = await this.fetchPublicKeyFromMirrorNode(accountId, networkString)
+
+            return {
+                type: 'hedera',
+                address: accountId,
+                accountId,
+                network: networkString,
+                publicKey,
+                keyType,
+            }
+        } catch (err) {
+            // Clean up on error
+            if (this.connectionTimeout) {
                 clearTimeout(this.connectionTimeout)
                 this.connectionTimeout = null
-              }
-              clearInterval(pollInterval)
-              resolve(accountId)
             }
-          }
-        }, 1000)
-      })
-
-      // Initialize and open modal
-      await this.connector.init({
-        name: 'WAGR',
-        description: 'Web3 Fantasy Sports Payment Management',
-        url: window.location.origin,
-        icons: ['https://wagr.app/icon.png'],
-      })
-
-      await this.connector.openModal()
-
-      // Wait for connection
-      const accountId = await connectionPromise
-
-      // Close modal
-      try {
-        this.connector.closeModal()
-      } catch (err) {
-        console.error('Error closing modal:', err)
-      }
-
-      return {
-        type: 'hedera',
-        address: accountId,
-        accountId,
-        network: networkString,
-      }
-    } catch (err) {
-      // Clean up on error
-      if (this.connectionTimeout) {
-        clearTimeout(this.connectionTimeout)
-        this.connectionTimeout = null
-      }
-      if (this.connector) {
-        try {
-          this.connector.closeModal()
-        } catch (closeErr) {
-          console.error('Error closing modal:', closeErr)
+            if (this.connector) {
+                try {
+                    this.connector.closeModal()
+                } catch (closeErr) {
+                    console.error('Error closing modal:', closeErr)
+                }
+            }
+            throw err
         }
-      }
-      throw err
-    }
-  }
-
-  async disconnect(): Promise<void> {
-    if (this.connector) {
-      try {
-        await this.connector.disconnect()
-      } catch (err) {
-        console.error('Error disconnecting from Hedera Wallet Connect:', err)
-      }
-    }
-    this.connector = null
-
-    if (this.connectionTimeout) {
-      clearTimeout(this.connectionTimeout)
-      this.connectionTimeout = null
-    }
-  }
-
-  async signMessage(message: string, walletState: WalletState): Promise<SignatureResult> {
-    if (!this.connector) {
-      throw new Error('Wallet not connected. Call connect() first.')
     }
 
-    if (!walletState.accountId) {
-      throw new Error('Account ID not found in wallet state')
+    async disconnect(): Promise<void> {
+        if (this.connector) {
+            try {
+                await this.connector.disconnect()
+            } catch (err) {
+                console.error('Error disconnecting from Hedera Wallet Connect:', err)
+            }
+        }
+        this.connector = null
+
+        if (this.connectionTimeout) {
+            clearTimeout(this.connectionTimeout)
+            this.connectionTimeout = null
+        }
     }
 
-    try {
-      const messageBytes = new TextEncoder().encode(message)
-      const signatures = await this.connector.signMessages([messageBytes])
+    async signMessage(message: string, walletState: WalletState): Promise<SignatureResult> {
+        if (!this.connector) {
+            throw new Error('Wallet not connected. Call connect() first.')
+        }
 
-      if (!signatures || signatures.length === 0) {
-        throw new Error('No signature received from wallet')
-      }
+        if (!walletState.accountId) {
+            throw new Error('Account ID not found in wallet state')
+        }
 
-      const signatureHex = this.uint8ArrayToHex(signatures[0])
+        try {
+            // Convert account ID to HIP-30 format: hedera:<network>:<accountId>
+            // e.g., "0.0.12345" -> "hedera:testnet:0.0.12345"
+            const network = walletState.network || 'testnet'
+            const signerAccountId = `hedera:${network}:${walletState.accountId}`
 
-      return {
-        signature: signatureHex,
-        publicKey: walletState.accountId,
-      }
-    } catch (err) {
-      console.error('Error signing message with Hedera Wallet Connect:', err)
-      throw err
+            // Call signMessage with proper params
+            const result = await this.connector.signMessage({
+                signerAccountId,
+                message,
+            })
+
+            if (!result || !result.signatureMap) {
+                throw new Error('No signature received from wallet')
+            }
+
+            // Extract signature from signatureMap
+            let signatureHex: string
+
+            if (typeof result.signatureMap === 'string') {
+                // It's a base64-encoded protobuf SignaturePair
+                // Structure: 0x0a 0x20 [32-byte pubKeyPrefix] 0x1a 0x40 [64-byte signature]
+                const signatureBytes = this.base64ToUint8Array(result.signatureMap)
+
+                // Parse the protobuf to extract the signature
+                const extracted = this.extractSignatureFromProtobuf(signatureBytes)
+                if (extracted) {
+                    signatureHex = this.uint8ArrayToHex(extracted)
+                } else {
+                    // Fallback: use raw bytes (will likely fail verification)
+                    console.warn('Could not parse protobuf SignaturePair, using raw bytes')
+                    signatureHex = this.uint8ArrayToHex(signatureBytes)
+                }
+            } else if (result.signatureMap.sigPair) {
+                // SignatureMap has sigPair array
+                const sigPair = Array.isArray(result.signatureMap.sigPair)
+                    ? result.signatureMap.sigPair[0]
+                    : result.signatureMap.sigPair
+
+                // Extract signature
+                if (sigPair.ed25519) {
+                    signatureHex = this.uint8ArrayToHex(sigPair.ed25519)
+                } else if (sigPair.ECDSASecp256k1) {
+                    signatureHex = this.uint8ArrayToHex(sigPair.ECDSASecp256k1)
+                } else {
+                    throw new Error('Unsupported signature type in signatureMap')
+                }
+            } else {
+                // Fallback: try to convert entire signatureMap
+                signatureHex = JSON.stringify(result.signatureMap)
+            }
+
+            // Use the public key and key type from walletState (fetched from mirror node during connect)
+            const publicKey = walletState.publicKey
+            if (!publicKey) {
+                throw new Error('Public key not found in wallet state. Was the wallet connected properly?')
+            }
+
+            return {
+                signature: signatureHex,
+                publicKey,
+                keyType: walletState.keyType,
+            }
+        } catch (err) {
+            console.error('Error signing message with Hedera Wallet Connect:', err)
+            throw err
+        }
     }
-  }
 
-  getDefaultNetwork(): string {
-    return HEDERA_DEFAULT_NETWORK
-  }
+    getDefaultNetwork(): string {
+        return HEDERA_DEFAULT_NETWORK
+    }
 
-  getSupportedNetworks(): string[] {
-    return ['mainnet', 'testnet', 'previewnet']
-  }
+    getSupportedNetworks(): string[] {
+        return ['mainnet', 'testnet', 'previewnet']
+    }
 
-  private uint8ArrayToHex(bytes: Uint8Array): string {
-    return Array.from(bytes)
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('')
-  }
+    private uint8ArrayToHex(bytes: Uint8Array): string {
+        return Array.from(bytes)
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('')
+    }
+
+    private base64ToUint8Array(base64: string): Uint8Array {
+        const binaryString = atob(base64)
+        const bytes = new Uint8Array(binaryString.length)
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i)
+        }
+        return bytes
+    }
+
+    /**
+     * Extract the signature from a protobuf-encoded SignaturePair.
+     * Hedera SignaturePair structure:
+     * - Field 1 (pubKeyPrefix): 0x0a [length] [bytes]
+     * - Field 3 (ed25519): 0x1a [length] [bytes]
+     * - Field 4 (ECDSASecp256k1): 0x22 [length] [bytes]
+     */
+    private extractSignatureFromProtobuf(data: Uint8Array): Uint8Array | null {
+        let offset = 0
+
+        // Skip outer wrapper if present (field 1, length-delimited)
+        if (data[0] === 0x0a && data.length > 2) {
+            const outerLen = data[1]
+            if (outerLen === data.length - 2) {
+                // It's wrapped, skip the wrapper
+                offset = 2
+            }
+        }
+
+        while (offset < data.length - 2) {
+            const fieldTag = data[offset]
+            const wireType = fieldTag & 0x07
+
+            if (wireType !== 2) {
+                // Not length-delimited, skip
+                offset++
+                continue
+            }
+
+            const length = data[offset + 1]
+            const fieldStart = offset + 2
+            const fieldEnd = fieldStart + length
+
+            if (fieldEnd > data.length) {
+                console.warn('Protobuf field extends beyond data')
+                break
+            }
+
+            // Field 3 = ed25519 signature (0x1a = (3 << 3) | 2)
+            // Field 4 = ECDSA signature (0x22 = (4 << 3) | 2)
+            if (fieldTag === 0x1a && length === 64) {
+                return data.slice(fieldStart, fieldEnd)
+            }
+            if (fieldTag === 0x22) {
+                return data.slice(fieldStart, fieldEnd)
+            }
+
+            offset = fieldEnd
+        }
+
+        // Fallback: if data is large enough, try extracting last 64 bytes as signature
+        if (data.length >= 100) {
+            const sigStart = data.length - 64
+            return data.slice(sigStart)
+        }
+
+        return null
+    }
+
+    /**
+     * Fetch the public key and key type for a Hedera account from the Mirror Node API.
+     * This is the recommended way to get a trusted public key for verification.
+     */
+    private async fetchPublicKeyFromMirrorNode(accountId: string, network: string): Promise<{ key: string; keyType: string }> {
+        // Determine the mirror node URL based on network
+        const mirrorNodeUrls: Record<string, string> = {
+            mainnet: 'https://mainnet.mirrornode.hedera.com',
+            testnet: 'https://testnet.mirrornode.hedera.com',
+            previewnet: 'https://previewnet.mirrornode.hedera.com',
+        }
+
+        const baseUrl = mirrorNodeUrls[network] || mirrorNodeUrls.testnet
+        const url = `${baseUrl}/api/v1/accounts/${accountId}`
+
+        try {
+            const response = await fetch(url)
+
+            if (!response.ok) {
+                throw new Error(`Mirror node returned ${response.status}: ${response.statusText}`)
+            }
+
+            const data = await response.json()
+
+            // The key field contains: { _type: "ED25519" | "ECDSA_SECP256K1", key: "hex_string" }
+            if (data.key && data.key.key) {
+                return {
+                    key: data.key.key,
+                    keyType: data.key._type || 'ED25519', // Default to ED25519 if not specified
+                }
+            }
+
+            throw new Error('No public key found in mirror node response')
+        } catch (err) {
+            console.error('Error fetching public key from mirror node:', err)
+            throw new Error(`Failed to fetch public key from mirror node: ${err}`)
+        }
+    }
 }
