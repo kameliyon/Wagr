@@ -11,7 +11,9 @@ import (
 
 	"wagr/src/internal/auth"
 	"wagr/src/internal/database"
+	"wagr/src/internal/fantasy"
 	"wagr/src/internal/fantasy/sleeper"
+	"wagr/src/internal/league"
 )
 
 func main() {
@@ -23,6 +25,18 @@ func main() {
 	}
 	defer db.Close()
 	log.Println("Connected to database")
+
+	// Initialize platform registry
+	registry := fantasy.NewRegistry()
+
+	// Register Sleeper adapter
+	sleeperClient := sleeper.NewClient()
+	sleeperAdapter := sleeper.NewAdapter(sleeperClient)
+	registry.Register(sleeperAdapter)
+	log.Println("Registered Sleeper platform adapter")
+
+	// Create platform service
+	platformService := fantasy.NewPlatformService(registry)
 
 	r := chi.NewRouter()
 
@@ -41,13 +55,37 @@ func main() {
 		MaxAge:           300,
 	}))
 
-	// Auth routes
+	// Auth service and middleware
 	authService := auth.NewService(db.Pool)
 	authHandlers := auth.NewHandlers(authService)
+
+	// Auth routes
 	r.Route("/api/auth", authHandlers.RegisterRoutes)
 
-	// Sleeper routes
-	sleeperHandlers := sleeper.NewHandlers(sleeper.NewClient())
+	// Platform-agnostic fantasy routes (NEW)
+	fantasyHandlers := fantasy.NewHandler(platformService)
+	r.Route("/api/fantasy", func(r chi.Router) {
+		r.Get("/platforms", fantasyHandlers.ListPlatforms)
+		r.Get("/{platform}/user/{identifier}", fantasyHandlers.GetUser)
+		r.Get("/{platform}/user/{userId}/leagues", fantasyHandlers.GetUserLeagues)
+		r.Get("/{platform}/league/{leagueId}", fantasyHandlers.GetLeague)
+		r.Get("/{platform}/league/{leagueId}/members", fantasyHandlers.GetLeagueMembers)
+		r.Get("/{platform}/league/{leagueId}/rosters", fantasyHandlers.GetLeagueRosters)
+	})
+
+	// League management routes (NEW - requires authentication)
+	leagueService := league.NewService(db.Pool, platformService)
+	leagueHandlers := league.NewHandler(leagueService)
+	r.Route("/api/leagues", func(r chi.Router) {
+		r.Use(authHandlers.AuthMiddleware)
+		r.Post("/link-platform", leagueHandlers.LinkPlatform)
+		r.Post("/import", leagueHandlers.ImportLeague)
+		r.Get("/", leagueHandlers.GetUserLeagues)
+		r.Get("/{leagueId}", leagueHandlers.GetLeague)
+	})
+
+	// Legacy Sleeper routes (backward compatibility)
+	sleeperHandlers := sleeper.NewHandlers(sleeperClient)
 	r.Route("/api/sleeper", sleeperHandlers.RegisterRoutes)
 
 	// Health check
@@ -56,6 +94,11 @@ func main() {
 	})
 
 	log.Println("Starting API Gateway on :8080")
+	log.Println("Routes registered:")
+	log.Println("  - /api/auth/* (authentication)")
+	log.Println("  - /api/fantasy/* (platform-agnostic)")
+	log.Println("  - /api/leagues/* (league management - authenticated)")
+	log.Println("  - /api/sleeper/* (legacy - backward compatibility)")
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		log.Fatal(err)
 	}
