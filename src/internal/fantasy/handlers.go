@@ -3,6 +3,8 @@ package fantasy
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -45,7 +47,7 @@ func (h *Handler) GetUserLeagues(w http.ResponseWriter, r *http.Request) {
 		sport = "nfl"
 	}
 	if season == "" {
-		season = "2024"
+		season = strconv.Itoa(time.Now().Year())
 	}
 
 	leagues, err := h.platformService.GetUserLeagues(r.Context(), platform, userID, sport, season)

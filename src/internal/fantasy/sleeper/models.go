@@ -30,6 +30,7 @@ type LeagueUser struct {
 	UserID      string            `json:"user_id"`
 	DisplayName string            `json:"display_name"`
 	Avatar      string            `json:"avatar"`
+	IsOwner     bool              `json:"is_owner"` // true if this user is the league commissioner
 	Metadata    map[string]string `json:"metadata"`
 }
 

@@ -2,7 +2,6 @@ package sleeper
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 
 	"wagr/src/internal/fantasy"
@@ -69,41 +68,33 @@ func (a *Adapter) GetLeague(ctx context.Context, leagueID string) (*fantasy.Plat
 
 // GetLeagueMembers fetches all members of a league with their profile information
 func (a *Adapter) GetLeagueMembers(ctx context.Context, leagueID string) ([]fantasy.PlatformMember, error) {
-	// Fetch league to get owner info
-	league, err := a.client.GetLeague(leagueID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch league: %w", err)
-	}
-
-	// Fetch users
+	// Fetch users — is_owner on each user identifies the league commissioner
 	users, err := a.client.GetLeagueUsers(leagueID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Fetch rosters to get roster IDs for each user
+	// Fetch rosters to get each user's roster_id
 	rosters, err := a.client.GetLeagueRosters(leagueID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Build a map of owner_id -> roster_id
-	ownerToRoster := make(map[string]int)
-	for _, roster := range rosters {
-		ownerToRoster[roster.OwnerID] = roster.RosterID
+	rosterIDByOwner := make(map[string]int, len(rosters))
+	for _, r := range rosters {
+		rosterIDByOwner[r.OwnerID] = r.RosterID
 	}
 
 	members := make([]fantasy.PlatformMember, 0, len(users))
 	for _, user := range users {
-		rosterID := ownerToRoster[user.UserID]
-
 		members = append(members, fantasy.PlatformMember{
 			PlatformUserID: user.UserID,
-			Username:       user.UserID, // Sleeper doesn't expose username in league users endpoint
+			Username:       user.UserID, // Sleeper doesn't expose username in the league users endpoint
 			DisplayName:    user.DisplayName,
 			AvatarURL:      user.Avatar,
-			IsOwner:        user.UserID == league.LeagueID, // Note: Sleeper uses league_id as owner, may need adjustment
-			RosterID:       rosterID,
+			IsOwner:        user.IsOwner, // sourced from /league/{id}/users response
+			RosterID:       rosterIDByOwner[user.UserID],
 			Metadata:       user.Metadata,
 		})
 	}

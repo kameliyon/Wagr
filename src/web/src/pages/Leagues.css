@@ -1,0 +1,188 @@
+.leagues-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.leagues-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.leagues-header h1 {
+  font-size: 2rem;
+  color: var(--text-primary);
+}
+
+.leagues-status {
+  color: var(--text-secondary);
+}
+
+.leagues-error {
+  color: var(--error);
+}
+
+.empty-state {
+  background-color: var(--surface);
+  border-radius: 12px;
+  padding: 3rem 1.5rem;
+  text-align: center;
+}
+
+.empty-state p {
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.empty-hint {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.leagues-list {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+
+.league-card {
+  background-color: var(--surface);
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: background-color 0.15s ease;
+}
+
+.league-card:hover {
+  background-color: var(--surface-light);
+}
+
+.league-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.league-name {
+  font-size: 1.1rem;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.platform-badge {
+  flex-shrink: 0;
+  background-color: var(--primary-color);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+}
+
+.league-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+}
+
+.league-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stat-value {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.status-pre_draft,
+.status-drafting {
+  color: #f59e0b;
+}
+
+.status-in_season {
+  color: var(--success);
+}
+
+.status-complete {
+  color: var(--text-secondary);
+}
+
+.commissioner-badge {
+  flex-shrink: 0;
+  background-color: var(--success);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+}
+
+.league-card-footer {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--surface-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.btn-settings {
+  font-size: 0.85rem;
+  padding: 0.4rem 1rem;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--primary-color);
+  color: var(--primary-color);
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-settings:hover {
+  background-color: var(--primary-color);
+  color: #fff;
+}
+
+.btn-remove-league {
+  font-size: 0.85rem;
+  padding: 0.4rem 1rem;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--error);
+  color: var(--error);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-remove-league:hover:not(:disabled) {
+  background-color: var(--error);
+  color: #fff;
+}
+
+.btn-remove-league--confirm {
+  background-color: var(--error);
+  color: #fff;
+}
+
+.btn-remove-league:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -2,6 +2,7 @@ package league
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -178,7 +179,7 @@ func (s *Service) ImportLeague(ctx context.Context, userID string, req ImportLea
 			updated_at = NOW()
 		RETURNING id, league_id, user_id, platform, platform_user_id, platform_username,
 			display_name, avatar_url, is_owner, roster_id, wins, losses, ties,
-			total_points, wallet_address, payment_status, created_at
+			total_points, COALESCE(wallet_address, ''), payment_status, created_at
 	`
 
 	members := make([]LeagueMember, 0, len(platformMembers))
@@ -249,16 +250,19 @@ func (s *Service) ImportLeague(ctx context.Context, userID string, req ImportLea
 	}, nil
 }
 
-// GetUserLeagues returns all leagues imported by a user
+// GetUserLeagues returns all leagues where the user is a member (matched via platform_profiles)
 func (s *Service) GetUserLeagues(ctx context.Context, userID string) ([]League, error) {
 	query := `
-		SELECT id, platform, platform_league_id, name, sport, season, status,
-			total_rosters, scoring_type, entry_fee_cents, created_at, updated_at
-		FROM leagues
-		WHERE id IN (
-			SELECT DISTINCT league_id FROM league_members WHERE user_id = $1
-		)
-		ORDER BY created_at DESC
+		SELECT l.id, l.platform, l.platform_league_id, l.name, l.sport, l.season, l.status,
+			l.total_rosters, l.scoring_type, l.entry_fee_cents, l.created_at, l.updated_at,
+			BOOL_OR(lm.is_owner) AS is_commissioner
+		FROM leagues l
+		JOIN league_members lm ON lm.league_id = l.id
+		JOIN platform_profiles pp ON pp.platform = lm.platform AND pp.platform_user_id = lm.platform_user_id
+		WHERE pp.user_id = $1
+		GROUP BY l.id, l.platform, l.platform_league_id, l.name, l.sport, l.season, l.status,
+			l.total_rosters, l.scoring_type, l.entry_fee_cents, l.created_at, l.updated_at
+		ORDER BY l.created_at DESC
 	`
 
 	rows, err := s.db.Query(ctx, query, userID)
@@ -283,6 +287,7 @@ func (s *Service) GetUserLeagues(ctx context.Context, userID string) ([]League, 
 			&league.EntryFeeCents,
 			&league.ImportedAt,
 			&league.LastSyncedAt,
+			&league.IsCommissioner,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan league: %w", err)
@@ -325,12 +330,112 @@ func (s *Service) GetLeague(ctx context.Context, leagueID string) (*League, erro
 	return &league, nil
 }
 
+// DeleteLeague removes the calling user's membership from a league.
+// If no WAGR-linked members remain afterward, the league record itself is also deleted.
+func (s *Service) DeleteLeague(ctx context.Context, leagueID, userID string) error {
+	result, err := s.db.Exec(ctx, `
+		DELETE FROM league_members
+		USING platform_profiles
+		WHERE league_members.league_id = $1
+		  AND league_members.platform = platform_profiles.platform
+		  AND league_members.platform_user_id = platform_profiles.platform_user_id
+		  AND platform_profiles.user_id = $2
+	`, leagueID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to remove league membership: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("league not found or user is not a member")
+	}
+
+	// Clean up the league record if no WAGR users are members anymore
+	var remaining int
+	err = s.db.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM league_members lm
+		JOIN platform_profiles pp ON pp.platform = lm.platform AND pp.platform_user_id = lm.platform_user_id
+		WHERE lm.league_id = $1
+	`, leagueID).Scan(&remaining)
+	if err != nil {
+		return fmt.Errorf("failed to check remaining members: %w", err)
+	}
+	if remaining == 0 {
+		_, err = s.db.Exec(ctx, `DELETE FROM leagues WHERE id = $1`, leagueID)
+		if err != nil {
+			return fmt.Errorf("failed to delete league: %w", err)
+		}
+	}
+	return nil
+}
+
+// GetLeagueSettings returns entry fee, payout structure, and commissioner status for a league
+func (s *Service) GetLeagueSettings(ctx context.Context, leagueID, userID string) (*LeagueSettings, error) {
+	query := `
+		SELECT l.entry_fee_cents, l.total_rosters, l.payout_structure,
+			COALESCE(BOOL_OR(lm.is_owner), false) AS is_commissioner
+		FROM leagues l
+		LEFT JOIN league_members lm ON lm.league_id = l.id
+		LEFT JOIN platform_profiles pp ON pp.platform = lm.platform
+			AND pp.platform_user_id = lm.platform_user_id
+			AND pp.user_id = $2
+		WHERE l.id = $1
+		GROUP BY l.entry_fee_cents, l.total_rosters, l.payout_structure
+	`
+	settings := &LeagueSettings{PayoutStructure: []PayoutEntry{}}
+	var payoutJSON []byte
+	err := s.db.QueryRow(ctx, query, leagueID, userID).Scan(
+		&settings.EntryFeeCents,
+		&settings.TotalRosters,
+		&payoutJSON,
+		&settings.IsCommissioner,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get league settings: %w", err)
+	}
+	if payoutJSON != nil {
+		json.Unmarshal(payoutJSON, &settings.PayoutStructure)
+	}
+	return settings, nil
+}
+
+// UpdateLeagueSettings updates entry fee and payout structure; only the commissioner may do this
+func (s *Service) UpdateLeagueSettings(ctx context.Context, leagueID, userID string, req UpdateSettingsRequest) (*LeagueSettings, error) {
+	var isCommissioner bool
+	checkQuery := `
+		SELECT COALESCE(BOOL_OR(lm.is_owner), false)
+		FROM league_members lm
+		JOIN platform_profiles pp ON pp.platform = lm.platform AND pp.platform_user_id = lm.platform_user_id
+		WHERE lm.league_id = $1 AND pp.user_id = $2
+		GROUP BY lm.league_id
+	`
+	err := s.db.QueryRow(ctx, checkQuery, leagueID, userID).Scan(&isCommissioner)
+	if err != nil || !isCommissioner {
+		return nil, ErrNotCommissioner
+	}
+
+	payoutJSON, err := json.Marshal(req.PayoutStructure)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payout structure: %w", err)
+	}
+
+	_, err = s.db.Exec(ctx, `
+		UPDATE leagues
+		SET entry_fee_cents = $2, payout_structure = $3::jsonb, updated_at = NOW()
+		WHERE id = $1
+	`, leagueID, req.EntryFeeCents, payoutJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update league settings: %w", err)
+	}
+
+	return s.GetLeagueSettings(ctx, leagueID, userID)
+}
+
 // GetLeagueMembers returns all members of a league
 func (s *Service) GetLeagueMembers(ctx context.Context, leagueID string) ([]LeagueMember, error) {
 	query := `
 		SELECT id, league_id, user_id, platform, platform_user_id, platform_username,
 			display_name, avatar_url, is_owner, roster_id, wins, losses, ties,
-			total_points, wallet_address, payment_status, created_at
+			total_points, COALESCE(wallet_address, ''), payment_status, created_at
 		FROM league_members
 		WHERE league_id = $1
 		ORDER BY roster_id

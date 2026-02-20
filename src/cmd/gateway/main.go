@@ -82,6 +82,9 @@ func main() {
 		r.Post("/import", leagueHandlers.ImportLeague)
 		r.Get("/", leagueHandlers.GetUserLeagues)
 		r.Get("/{leagueId}", leagueHandlers.GetLeague)
+		r.Delete("/{leagueId}", leagueHandlers.DeleteLeague)
+		r.Get("/{leagueId}/settings", leagueHandlers.GetLeagueSettings)
+		r.Put("/{leagueId}/settings", leagueHandlers.UpdateLeagueSettings)
 	})
 
 	// Legacy Sleeper routes (backward compatibility)

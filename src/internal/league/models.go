@@ -1,6 +1,9 @@
 package league
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // PlatformProfile represents a link between a WAGR user and their fantasy platform account
 type PlatformProfile struct {
@@ -40,6 +43,7 @@ type League struct {
 	TotalRosters     int        `json:"total_rosters"`
 	ScoringType      string     `json:"scoring_type,omitempty"`
 	EntryFeeCents    int64      `json:"entry_fee_cents"`
+	IsCommissioner   bool       `json:"is_commissioner"`
 	ImportedBy       string     `json:"imported_by"`
 	ImportedAt       time.Time  `json:"imported_at"`
 	LastSyncedAt     *time.Time `json:"last_synced_at,omitempty"`
@@ -88,4 +92,26 @@ type ImportLeagueRequest struct {
 type ImportLeagueResponse struct {
 	League  League         `json:"league"`
 	Members []LeagueMember `json:"members"`
+}
+
+var ErrNotCommissioner = errors.New("user is not commissioner of this league")
+
+type PayoutEntry struct {
+	Type        string `json:"type"`            // "placement" or "weekly"
+	Label       string `json:"label"`
+	Place       int    `json:"place,omitempty"` // placement entries only
+	AmountCents int64  `json:"amount_cents"`
+	Weeks       int    `json:"weeks,omitempty"` // weekly entries: number of occurrences
+}
+
+type LeagueSettings struct {
+	EntryFeeCents   int64         `json:"entry_fee_cents"`
+	TotalRosters    int           `json:"total_rosters"`
+	PayoutStructure []PayoutEntry `json:"payout_structure"`
+	IsCommissioner  bool          `json:"is_commissioner"`
+}
+
+type UpdateSettingsRequest struct {
+	EntryFeeCents   int64         `json:"entry_fee_cents"`
+	PayoutStructure []PayoutEntry `json:"payout_structure"`
 }

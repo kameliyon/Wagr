@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useWallet } from '../hooks/useWallet'
 import './Home.css'
 
@@ -38,8 +39,11 @@ export default function Home() {
           <div className="card">
             <h2>Your Leagues</h2>
             <p className="placeholder">
-              League management coming soon. Connect your Sleeper account to import your leagues.
+              View and manage your imported fantasy leagues.
             </p>
+            <Link to="/leagues" className="btn-primary" style={{ display: 'inline-block', marginTop: '1rem' }}>
+              View My Leagues
+            </Link>
           </div>
         </div>
       ) : (

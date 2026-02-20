@@ -1,6 +1,7 @@
 package sleeper
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -56,6 +57,7 @@ func (h *Handlers) GetUserLeagues(w http.ResponseWriter, r *http.Request) {
 		season = strconv.Itoa(time.Now().Year())
 	}
 
+	fmt.Println("getting leagues for season: ", season)
 	leagues, err := h.client.GetUserLeagues(userID, sport, season)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
