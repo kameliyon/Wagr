@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-WAGR is a Web3 application for managing payments for Fantasy sports leagues. Users can create leagues, connect wallets, and handle entry fees and payouts via smart contracts on blockchain (Ethereum Testnet/Cardano).
+WAGR is a Web3 application for managing payments for Fantasy sports leagues. Users can create leagues, connect wallets, and handle entry fees and payouts via smart contracts on blockchain (Hedera Hashgraph).
 
 ## Technology Stack
 
