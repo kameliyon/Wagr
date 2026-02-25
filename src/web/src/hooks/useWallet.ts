@@ -8,6 +8,7 @@ export function useWallet() {
     // Connection state
     isConnected: wallet.isConnected,
     isConnecting: wallet.isConnecting,
+    isAuthenticating: wallet.isAuthenticating,
 
     // Wallet data
     walletType: wallet.walletState?.type ?? null,

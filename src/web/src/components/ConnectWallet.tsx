@@ -8,6 +8,7 @@ export default function ConnectWallet() {
     const {
         isConnected,
         isConnecting,
+        isAuthenticating,
         isAuthenticated,
         address,
         accountId,
@@ -21,7 +22,6 @@ export default function ConnectWallet() {
     } = useWallet()
 
     const [showWalletSelect, setShowWalletSelect] = useState(false)
-    const [isAuthenticating, setIsAuthenticating] = useState(false)
 
     const handleConnect = async (type: WalletType, walletName: string) => {
         try {
@@ -29,17 +29,6 @@ export default function ConnectWallet() {
             setShowWalletSelect(false)
         } catch {
             // Error is handled by the provider
-        }
-    }
-
-    const handleAuthenticate = async () => {
-        setIsAuthenticating(true)
-        try {
-            await authenticate()
-        } catch {
-            // Error is handled by the provider
-        } finally {
-            setIsAuthenticating(false)
         }
     }
 
@@ -96,9 +85,9 @@ export default function ConnectWallet() {
                                     ? handleConnect(availableWallets[0].type, availableWallets[0].name)
                                     : setShowWalletSelect(true)
                                 }
-                                disabled={isConnecting}
+                                disabled={isConnecting || isAuthenticating}
                             >
-                                {isConnecting ? 'Connecting...' : 'Connect Wallet'}
+                                {isConnecting ? 'Connecting...' : isAuthenticating ? 'Waiting for signature...' : 'Connect Wallet'}
                             </button>
                         )}
                 {error && <p className="error">{error}</p>}
@@ -106,8 +95,8 @@ export default function ConnectWallet() {
         )
     }
 
-    // Connected but not authenticated - show sign in button
-    if (!isAuthenticated) {
+    // Connected but not authenticated - show retry button (only appears if auth failed)
+    if (isConnected && !isAuthenticated) {
         return (
             <div className="connect-wallet">
                 <div className="wallet-connected">
@@ -117,14 +106,12 @@ export default function ConnectWallet() {
                     </span>
                     <button
                         className="btn-primary"
-                        onClick={handleAuthenticate}
+                        onClick={() => authenticate()}
                         disabled={isAuthenticating}
                     >
-                        {isAuthenticating ? 'Signing...' : 'Sign In'}
+                        {isAuthenticating ? 'Signing...' : 'Retry Sign In'}
                     </button>
-                    <button className="btn-secondary" onClick={disconnect}>
-                        Disconnect
-                    </button>
+                    <button className="btn-secondary" onClick={disconnect}>Disconnect</button>
                 </div>
                 {error && <p className="error">{error}</p>}
             </div>

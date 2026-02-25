@@ -17,6 +17,7 @@ interface User {
 interface WalletContextType {
   isConnected: boolean
   isConnecting: boolean
+  isAuthenticating: boolean
   walletState: WalletState | null
   user: User | null
   token: string | null
@@ -34,6 +35,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const config = useWalletConfig()
   const [isConnected, setIsConnected] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
+  const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [walletState, setWalletState] = useState<WalletState | null>(null)
   const [activeStrategy, setActiveStrategy] = useState<WalletStrategy | null>(null)
   const [user, setUser] = useState<User | null>(null)
@@ -107,111 +109,106 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const authenticateWith = useCallback(
+    async (strategy: WalletStrategy, state: WalletState) => {
+      // Step 1: Get nonce
+      const nonceResponse = await fetch('/api/auth/nonce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet_address: state.address, wallet_type: state.type }),
+      })
+      if (!nonceResponse.ok) {
+        const errorData = await nonceResponse.json().catch(() => ({ message: 'Unknown error' }))
+        throw new Error(errorData.message || 'Failed to get authentication nonce')
+      }
+      const { message } = await nonceResponse.json()
+
+      // Step 2: Sign
+      const signResult = await strategy.signMessage(message, state)
+
+      // Step 3: Verify
+      const verifyResponse = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wallet_address: state.address,
+          wallet_type: state.type,
+          signature: signResult.signature,
+          public_key: signResult.publicKey,
+          key_type: signResult.keyType,
+        }),
+      })
+      if (!verifyResponse.ok) {
+        const errorData = await verifyResponse.json().catch(() => ({ message: 'Unknown error' }))
+        throw new Error(errorData.message || 'Authentication failed')
+      }
+      const { token: authToken, user: userData } = await verifyResponse.json()
+      localStorage.setItem('wagr_token', authToken)
+      setToken(authToken)
+      setUser(userData)
+    },
+    [] // reads only from parameters
+  )
+
   const connect = useCallback(
     async (walletType: WalletType, walletName: string, networkId?: string) => {
       setIsConnecting(true)
       setError(null)
 
+      let connectedStrategy: WalletStrategy | null = null
+      let connectedState: WalletState | null = null
+
       try {
         const strategy = strategies[walletType]
-        if (!strategy) {
-          throw new Error(`Unsupported wallet type: ${walletType}`)
-        }
+        if (!strategy) throw new Error(`Unsupported wallet type: ${walletType}`)
 
-        console.log(`Connecting to ${walletType} wallet: ${walletName}`)
-
-        // Use default network from config if not specified
         const network = networkId || config.defaultNetwork?.[walletType]
-
-        // Connect using the appropriate strategy
         const state = await strategy.connect(walletName, network)
-        console.log('Wallet connected:', state)
+
+        connectedStrategy = strategy
+        connectedState = state
 
         setWalletState(state)
         setActiveStrategy(strategy)
         setIsConnected(true)
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to connect wallet'
-        console.error('Connection error:', err)
         setError(message)
         throw err
       } finally {
         setIsConnecting(false)
       }
+
+      // Auth runs after the connection finally block so isConnecting is false
+      // Any auth error only sets error — wallet stays connected for retry
+      setIsAuthenticating(true)
+      try {
+        await authenticateWith(connectedStrategy!, connectedState!)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Authentication failed'
+        setError(message)
+        // Do NOT throw — wallet remains connected
+      } finally {
+        setIsAuthenticating(false)
+      }
     },
-    [strategies, config]
+    [strategies, config, authenticateWith]
   )
 
   const authenticate = useCallback(async () => {
-    if (!activeStrategy || !walletState) {
-      throw new Error('Wallet not connected')
-    }
-
+    if (!activeStrategy || !walletState) throw new Error('Wallet not connected')
     setError(null)
-
+    setIsAuthenticating(true)
     try {
-      // Step 1: Get nonce from backend
-      console.log('Step 1: Getting nonce for wallet:', walletState)
-      const nonceResponse = await fetch('/api/auth/nonce', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          wallet_address: walletState.address,
-          wallet_type: walletState.type,
-        }),
-      })
-
-      if (!nonceResponse.ok) {
-        const errorData = await nonceResponse.json().catch(() => ({ message: 'Unknown error' }))
-        console.error('Nonce request failed:', errorData)
-        throw new Error(errorData.message || 'Failed to get authentication nonce')
-      }
-
-      const { message } = await nonceResponse.json()
-
-      // Step 2: Sign the message with wallet
-      const signResult = await activeStrategy.signMessage(message, walletState)
-      console.log('Step 3: Signature obtained:', {
-        signature: signResult.signature.substring(0, 20) + '...',
-        publicKey: signResult.publicKey,
-      })
-
-      // Step 3: Verify signature with backend
-      const verifyPayload = {
-        wallet_address: walletState.address,
-        wallet_type: walletState.type,
-        signature: signResult.signature,
-        public_key: signResult.publicKey,
-        key_type: signResult.keyType, // 'ED25519' or 'ECDSA_SECP256K1' for Hedera
-      }
-      console.log('Step 4: Verifying signature...', { keyType: signResult.keyType })
-
-      const verifyResponse = await fetch('/api/auth/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(verifyPayload),
-      })
-
-      if (!verifyResponse.ok) {
-        const errorData = await verifyResponse.json().catch(() => ({ message: 'Unknown error' }))
-        console.error('Verify request failed:', verifyResponse.status, errorData)
-        throw new Error(errorData.message || 'Authentication failed')
-      }
-
-      const { token: authToken, user: userData } = await verifyResponse.json()
-      console.log('Authentication successful!')
-
-      // Store token and user
-      localStorage.setItem('wagr_token', authToken)
-      setToken(authToken)
-      setUser(userData)
+      await authenticateWith(activeStrategy, walletState)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Authentication failed'
-      console.error('Authentication error:', err)
       setError(message)
       throw err
+    } finally {
+      setIsAuthenticating(false)
     }
-  }, [activeStrategy, walletState])
+  }, [activeStrategy, walletState, authenticateWith])
 
   const disconnect = useCallback(async () => {
     // Disconnect the active strategy
@@ -238,6 +235,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       value={{
         isConnected,
         isConnecting,
+        isAuthenticating,
         walletState,
         user,
         token,
