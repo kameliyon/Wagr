@@ -85,6 +85,7 @@ func main() {
 		r.Delete("/{leagueId}", leagueHandlers.DeleteLeague)
 		r.Get("/{leagueId}/settings", leagueHandlers.GetLeagueSettings)
 		r.Put("/{leagueId}/settings", leagueHandlers.UpdateLeagueSettings)
+		r.Post("/{leagueId}/oracle/week-results", leagueHandlers.OracleWeekResults)
 	})
 
 	// Health check

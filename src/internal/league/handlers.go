@@ -178,6 +178,12 @@ func (h *Handler) UpdateLeagueSettings(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(settings)
 }
 
+// OracleWeekResults is a placeholder for the Hedera Oracle integration.
+// It will accept signed weekly score data and trigger on-chain bonus payouts.
+func (h *Handler) OracleWeekResults(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "oracle integration not yet implemented", http.StatusNotImplemented)
+}
+
 // GetLeague handles GET /{leagueId} (requires authentication)
 func (h *Handler) GetLeague(w http.ResponseWriter, r *http.Request) {
 	// Get authenticated user from context

@@ -1,8 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useWallet } from '../hooks/useWallet'
-import type { LeagueSettings, PayoutEntry } from '../types/league'
+import type { LeagueSettings, PayoutEntry, BonusType } from '../types/league'
 import './LeagueSettings.css'
+
+const BONUS_TYPE_OPTIONS: { value: BonusType; label: string }[] = [
+  { value: 'weekly_high_score', label: 'Weekly High Score' },
+  { value: 'score_threshold',   label: 'Score Threshold' },
+]
+
+function defaultLabelForBonusType(bt: BonusType): string {
+  return BONUS_TYPE_OPTIONS.find(o => o.value === bt)?.label ?? bt
+}
 
 function ordinalLabel(n: number): string {
   const s = n % 100
@@ -18,10 +27,12 @@ function ordinalLabel(n: number): string {
 function normalizeEntries(entries: PayoutEntry[]): PayoutEntry[] {
   return entries.map((e, i) => ({
     type: e.type ?? 'placement',
-    label: e.label || (e.type === 'weekly' ? 'Weekly Bonus' : ordinalLabel(e.place ?? i + 1)),
+    bonus_type: e.type === 'weekly' ? (e.bonus_type ?? 'weekly_high_score') : undefined,
+    label: e.label || (e.type === 'weekly' ? defaultLabelForBonusType(e.bonus_type ?? 'weekly_high_score') : ordinalLabel(e.place ?? i + 1)),
     place: e.place,
     amount_cents: e.amount_cents,
     weeks: e.weeks,
+    criteria: e.criteria,
   }))
 }
 
@@ -97,9 +108,12 @@ export default function LeagueSettingsPage() {
   const handleAddWeekly = () => {
     setPayoutRows((prev) => [
       ...prev,
-      { type: 'weekly', label: 'Weekly High Score', amount_cents: 0, weeks: 14 },
+      { type: 'weekly', bonus_type: 'weekly_high_score', label: 'Weekly High Score', amount_cents: 0, weeks: 14 },
     ])
   }
+
+  const updateWeekly = (i: number, patch: Partial<PayoutEntry>) =>
+    setPayoutRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -238,7 +252,7 @@ export default function LeagueSettingsPage() {
                   <table className="payout-table payout-table--weekly">
                     <thead>
                       <tr>
-                        <th>Label</th>
+                        <th>Bonus Type</th>
                         <th>Per Week</th>
                         <th>Weeks</th>
                         <th>Total</th>
@@ -252,12 +266,30 @@ export default function LeagueSettingsPage() {
                         return (
                           <tr key={i} className="payout-row">
                             <td>
-                              <input
-                                className="input-label"
-                                type="text"
-                                value={row.label}
-                                onChange={(e) => updateRow(i, { label: e.target.value })}
-                              />
+                              <select
+                                value={row.bonus_type ?? 'weekly_high_score'}
+                                onChange={e => {
+                                  const bt = e.target.value as BonusType
+                                  updateWeekly(i, {
+                                    bonus_type: bt,
+                                    label: defaultLabelForBonusType(bt),
+                                    criteria: bt === 'score_threshold' ? { threshold: row.criteria?.threshold ?? 100 } : undefined,
+                                  })
+                                }}
+                              >
+                                {BONUS_TYPE_OPTIONS.map(o => (
+                                  <option key={o.value} value={o.value}>{o.label}</option>
+                                ))}
+                              </select>
+                              {row.bonus_type === 'score_threshold' && (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  placeholder="Min pts"
+                                  value={row.criteria?.threshold ?? ''}
+                                  onChange={e => updateWeekly(i, { criteria: { threshold: Number(e.target.value) } })}
+                                />
+                              )}
                             </td>
                             <td>
                               <div className="input-dollar">
@@ -367,12 +399,16 @@ export default function LeagueSettingsPage() {
                       ) : (
                         <table className="payout-table payout-table--weekly">
                           <thead>
-                            <tr><th>Label</th><th>Per Week</th><th>Weeks</th><th>Total</th></tr>
+                            <tr><th>Bonus Type</th><th>Per Week</th><th>Weeks</th><th>Total</th></tr>
                           </thead>
                           <tbody>
                             {roWeekly.map((row, i) => (
                               <tr key={i} className="payout-row">
-                                <td>{row.label}</td>
+                                <td>
+                                  {row.label}
+                                  {row.bonus_type === 'score_threshold' && row.criteria?.threshold != null
+                                    ? ` (≥ ${row.criteria.threshold} pts)` : ''}
+                                </td>
                                 <td>{formatDollars(row.amount_cents)}</td>
                                 <td>{row.weeks ?? 0}</td>
                                 <td>{formatDollars(row.amount_cents * (row.weeks ?? 0))}</td>

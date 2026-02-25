@@ -15,12 +15,20 @@ export interface League {
   last_synced_at?: string;
 }
 
+export type BonusType = 'weekly_high_score' | 'score_threshold'
+
+export interface BonusCriteria {
+  threshold?: number  // points required for score_threshold
+}
+
 export interface PayoutEntry {
   type: 'placement' | 'weekly';
+  bonus_type?: BonusType;
   label: string;
   place?: number;       // placement entries only
   amount_cents: number;
   weeks?: number;       // weekly entries: number of occurrences
+  criteria?: BonusCriteria;
 }
 
 export interface LeagueSettings {

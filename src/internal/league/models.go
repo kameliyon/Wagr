@@ -96,12 +96,19 @@ type ImportLeagueResponse struct {
 
 var ErrNotCommissioner = errors.New("user is not commissioner of this league")
 
+// BonusCriteria holds type-specific parameters for weekly bonus entries.
+type BonusCriteria struct {
+	Threshold *float64 `json:"threshold,omitempty"` // points required (score_threshold)
+}
+
 type PayoutEntry struct {
-	Type        string `json:"type"`            // "placement" or "weekly"
-	Label       string `json:"label"`
-	Place       int    `json:"place,omitempty"` // placement entries only
-	AmountCents int64  `json:"amount_cents"`
-	Weeks       int    `json:"weeks,omitempty"` // weekly entries: number of occurrences
+	Type        string         `json:"type"`                 // "placement" or "weekly"
+	BonusType   string         `json:"bonus_type,omitempty"` // "weekly_high_score" | "score_threshold"
+	Label       string         `json:"label"`
+	Place       int            `json:"place,omitempty"` // placement entries only
+	AmountCents int64          `json:"amount_cents"`
+	Weeks       int            `json:"weeks,omitempty"` // weekly entries: number of occurrences
+	Criteria    *BonusCriteria `json:"criteria,omitempty"`
 }
 
 type LeagueSettings struct {
