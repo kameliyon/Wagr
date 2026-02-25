@@ -87,10 +87,6 @@ func main() {
 		r.Put("/{leagueId}/settings", leagueHandlers.UpdateLeagueSettings)
 	})
 
-	// Legacy Sleeper routes (backward compatibility)
-	sleeperHandlers := sleeper.NewHandlers(sleeperClient)
-	r.Route("/api/sleeper", sleeperHandlers.RegisterRoutes)
-
 	// Health check
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok"))
@@ -101,7 +97,6 @@ func main() {
 	log.Println("  - /api/auth/* (authentication)")
 	log.Println("  - /api/fantasy/* (platform-agnostic)")
 	log.Println("  - /api/leagues/* (league management - authenticated)")
-	log.Println("  - /api/sleeper/* (legacy - backward compatibility)")
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		log.Fatal(err)
 	}
