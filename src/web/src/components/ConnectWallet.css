@@ -4,10 +4,14 @@
   gap: 0.75rem;
 }
 
+/* ── Connected pill ───────────────────────────────────────── */
+
 .connect-wallet.authenticated {
-  background-color: var(--surface);
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.4rem 0.85rem 0.4rem 0.5rem;
+  border-radius: 12px;
 }
 
 .wallet-connected {
@@ -17,29 +21,36 @@
 }
 
 .address {
-  font-family: monospace;
-  font-size: 0.9rem;
+  font-family: ui-monospace, 'Fira Code', monospace;
+  font-size: 0.8rem;
   color: var(--text-secondary);
-  background-color: var(--surface);
-  padding: 0.5rem 0.75rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 0.28rem 0.6rem;
   border-radius: 6px;
+  letter-spacing: 0.02em;
 }
 
 .authenticated .address {
-  background-color: var(--surface-light);
+  background: rgba(255, 255, 255, 0.07);
 }
+
+/* ── Wallet picker ────────────────────────────────────────── */
 
 .wallet-select {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  background-color: var(--surface);
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   padding: 1rem;
-  border-radius: 8px;
+  border-radius: 12px;
 }
 
 .wallet-select p {
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   color: var(--text-secondary);
   margin-bottom: 0.25rem;
 }
@@ -47,6 +58,8 @@
 .wallet-option {
   text-transform: capitalize;
 }
+
+/* ── No wallet ────────────────────────────────────────────── */
 
 .no-wallet {
   display: flex;
@@ -56,21 +69,24 @@
 }
 
 .no-wallet p {
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   color: var(--text-secondary);
 }
 
 .no-wallet a {
-  color: var(--primary-color);
+  color: var(--accent-light);
   text-decoration: none;
+  transition: color 0.15s ease;
 }
 
 .no-wallet a:hover {
-  text-decoration: underline;
+  color: var(--text-primary);
 }
+
+/* ── Error ────────────────────────────────────────────────── */
 
 .error {
   color: var(--error);
-  font-size: 0.85rem;
+  font-size: 0.83rem;
   margin-top: 0.25rem;
 }

@@ -1,7 +1,7 @@
 .leagues-page {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.75rem;
 }
 
 .leagues-header {
@@ -12,35 +12,48 @@
 }
 
 .leagues-header h1 {
-  font-size: 2rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--text-primary);
 }
 
 .leagues-status {
   color: var(--text-secondary);
+  font-size: 0.9rem;
 }
 
 .leagues-error {
   color: var(--error);
+  font-size: 0.9rem;
 }
 
+/* ── Empty state ──────────────────────────────────────────── */
+
 .empty-state {
-  background-color: var(--surface);
-  border-radius: 12px;
-  padding: 3rem 1.5rem;
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 16px;
+  padding: 4rem 2rem;
   text-align: center;
 }
 
 .empty-state p {
   color: var(--text-primary);
-  font-size: 1.1rem;
-  margin-bottom: 0.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  margin-bottom: 0.4rem;
 }
 
 .empty-hint {
   color: var(--text-secondary);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
+
+/* ── League grid ──────────────────────────────────────────── */
 
 .leagues-list {
   display: grid;
@@ -49,14 +62,20 @@
 }
 
 .league-card {
-  background-color: var(--surface);
-  border-radius: 12px;
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 16px;
   padding: 1.5rem;
-  transition: background-color 0.15s ease;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
 }
 
 .league-card:hover {
-  background-color: var(--surface-light);
+  border-color: var(--glass-border-accent);
+  box-shadow: var(--glass-shadow), var(--glass-glow);
+  transform: translateY(-2px);
 }
 
 .league-card-header {
@@ -68,22 +87,42 @@
 }
 
 .league-name {
-  font-size: 1.1rem;
+  font-size: 1rem;
+  font-weight: 600;
   color: var(--text-primary);
   margin: 0;
+  line-height: 1.4;
 }
+
+/* ── Badges ───────────────────────────────────────────────── */
 
 .platform-badge {
   flex-shrink: 0;
-  background-color: var(--primary-color);
+  background: var(--accent-gradient);
   color: #fff;
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: 0.65rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 0.2rem 0.6rem;
+  letter-spacing: 0.08em;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  box-shadow: 0 0 10px rgba(124, 58, 237, 0.4);
+}
+
+.commissioner-badge {
+  flex-shrink: 0;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: var(--success);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 0.2rem 0.65rem;
   border-radius: 999px;
 }
+
+/* ── Stats ────────────────────────────────────────────────── */
 
 .league-stats {
   display: flex;
@@ -94,25 +133,26 @@
 .league-stat {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.15rem;
 }
 
 .stat-label {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+  font-size: 0.7rem;
+  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.07em;
+  font-weight: 600;
 }
 
 .stat-value {
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   color: var(--text-primary);
   font-weight: 500;
 }
 
 .status-pre_draft,
 .status-drafting {
-  color: #f59e0b;
+  color: var(--warning);
 }
 
 .status-in_season {
@@ -120,69 +160,63 @@
 }
 
 .status-complete {
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
-.commissioner-badge {
-  flex-shrink: 0;
-  background-color: var(--success);
-  color: #fff;
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-}
+/* ── Card footer ──────────────────────────────────────────── */
 
 .league-card-footer {
   margin-top: 1.25rem;
   padding-top: 1rem;
-  border-top: 1px solid var(--surface-light);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
+  justify-content: flex-end;
+  gap: 0.6rem;
 }
 
 .btn-settings {
-  font-size: 0.85rem;
-  padding: 0.4rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.4rem 0.9rem;
   border-radius: 8px;
-  background: transparent;
-  border: 1px solid var(--primary-color);
-  color: var(--primary-color);
+  background: rgba(124, 58, 237, 0.12);
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  color: var(--accent-light);
   text-decoration: none;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  font-family: inherit;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .btn-settings:hover {
-  background-color: var(--primary-color);
-  color: #fff;
+  background: rgba(124, 58, 237, 0.22);
+  box-shadow: 0 0 14px rgba(124, 58, 237, 0.3);
 }
 
 .btn-remove-league {
-  font-size: 0.85rem;
-  padding: 0.4rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.4rem 0.9rem;
   border-radius: 8px;
-  background: transparent;
-  border: 1px solid var(--error);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.28);
   color: var(--error);
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  font-family: inherit;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .btn-remove-league:hover:not(:disabled) {
-  background-color: var(--error);
-  color: #fff;
+  background: rgba(239, 68, 68, 0.18);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
 }
 
 .btn-remove-league--confirm {
-  background-color: var(--error);
-  color: #fff;
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.5);
 }
 
 .btn-remove-league:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
