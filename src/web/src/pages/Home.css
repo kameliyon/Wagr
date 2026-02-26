@@ -29,9 +29,10 @@
 .hero h1 {
   position: relative;
   z-index: 1;
+  font-family: var(--font-brand);
   font-size: clamp(2.5rem, 6vw, 4rem);
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   line-height: 1.1;
   background: linear-gradient(135deg, #ffffff 0%, #c4b5fd 40%, #818cf8 100%);
   -webkit-background-clip: text;
