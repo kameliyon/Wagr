@@ -15,7 +15,7 @@ export interface League {
   last_synced_at?: string;
 }
 
-export type BonusType = 'weekly_high_score' | 'score_threshold'
+export type BonusType = 'weekly_high_score' | 'score_threshold' | 'highest_weekly_score'
 
 export interface BonusCriteria {
   threshold?: number  // points required for score_threshold

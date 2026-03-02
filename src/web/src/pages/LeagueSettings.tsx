@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useWallet } from '../hooks/useWallet'
 import type { LeagueSettings, PayoutEntry, BonusType } from '../types/league'
+import { PlaceSelect, CustomSelect } from '../components/PlaceSelect'
 import './LeagueSettings.css'
 
 const BONUS_TYPE_OPTIONS: { value: BonusType; label: string }[] = [
-  { value: 'weekly_high_score', label: 'Weekly High Score' },
-  { value: 'score_threshold',   label: 'Score Threshold' },
+  { value: 'weekly_high_score',    label: 'Weekly High Score' },
+  { value: 'highest_weekly_score', label: 'Highest Weekly Score' },
+  { value: 'score_threshold',      label: 'Score Threshold' },
 ]
 
 function defaultLabelForBonusType(bt: BonusType): string {
@@ -24,6 +26,11 @@ function ordinalLabel(n: number): string {
   }
 }
 
+function placeOptions(totalRosters: number): number[] {
+  const max = Math.ceil(totalRosters / 2)
+  return Array.from({ length: max }, (_, i) => i + 1)
+}
+
 function normalizeEntries(entries: PayoutEntry[]): PayoutEntry[] {
   return entries.map((e, i) => ({
     type: e.type ?? 'placement',
@@ -36,9 +43,13 @@ function normalizeEntries(entries: PayoutEntry[]): PayoutEntry[] {
   }))
 }
 
+const WEEKLY_BONUS_TYPES: BonusType[] = ['weekly_high_score', 'score_threshold']
+const isWeeklyBonus = (bt?: BonusType) => WEEKLY_BONUS_TYPES.includes(bt ?? 'weekly_high_score')
+
 function totalPayout(rows: PayoutEntry[]): number {
   return rows.reduce((s, r) => {
-    if (r.type === 'weekly') return s + r.amount_cents * (r.weeks ?? 0)
+    if (r.type === 'weekly' && isWeeklyBonus(r.bonus_type))
+      return s + r.amount_cents * (r.weeks ?? 0)
     return s + r.amount_cents
   }, 0)
 }
@@ -97,6 +108,8 @@ export default function LeagueSettingsPage() {
     setPayoutRows((prev) => prev.filter((_, i) => i !== index))
 
   const handleAddPlacement = () => {
+    const maxAllowed = Math.ceil((settings?.total_rosters ?? 0) / 2)
+    if (placements.length >= maxAllowed) return
     const maxPlace = placements.reduce((m, r) => Math.max(m, r.place ?? 0), 0)
     const nextPlace = maxPlace + 1
     setPayoutRows((prev) => [
@@ -192,7 +205,7 @@ export default function LeagueSettingsPage() {
                   <table className="payout-table">
                     <thead>
                       <tr>
-                        <th>Label</th>
+                        <th>Place</th>
                         <th>Amount</th>
                         <th></th>
                       </tr>
@@ -203,11 +216,11 @@ export default function LeagueSettingsPage() {
                         return (
                           <tr key={i} className="payout-row">
                             <td>
-                              <input
-                                className="input-label"
-                                type="text"
-                                value={row.label}
-                                onChange={(e) => updateRow(i, { label: e.target.value })}
+                              <PlaceSelect
+                                value={row.place ?? ''}
+                                options={placeOptions(settings.total_rosters)}
+                                getLabel={ordinalLabel}
+                                onChange={(place) => updateRow(i, { place, label: ordinalLabel(place) })}
                               />
                             </td>
                             <td>
@@ -237,23 +250,28 @@ export default function LeagueSettingsPage() {
                     </tbody>
                   </table>
                 )}
-                <button type="button" className="btn-add-place" onClick={handleAddPlacement}>
+                <button
+                  type="button"
+                  className="btn-add-place"
+                  onClick={handleAddPlacement}
+                  disabled={placements.length >= Math.ceil((settings?.total_rosters ?? 0) / 2)}
+                >
                   + Add Season Payout
                 </button>
               </section>
 
-              {/* Recurring Bonuses */}
+              {/* Bonuses */}
               <section className="settings-section">
-                <h2>Recurring Bonuses</h2>
-                <p className="settings-hint">Prizes awarded repeatedly throughout the season (e.g., weekly high score).</p>
+                <h2>Bonuses</h2>
+                <p className="settings-hint">Weekly prizes or one-time season awards (e.g., weekly high score, highest score of the season).</p>
                 {weekly.length === 0 ? (
-                  <p className="settings-empty">No recurring bonuses defined yet.</p>
+                  <p className="settings-empty">No bonuses defined yet.</p>
                 ) : (
                   <table className="payout-table payout-table--weekly">
                     <thead>
                       <tr>
                         <th>Bonus Type</th>
-                        <th>Per Week</th>
+                        <th>Amount</th>
                         <th>Weeks</th>
                         <th>Total</th>
                         <th></th>
@@ -262,25 +280,27 @@ export default function LeagueSettingsPage() {
                     <tbody>
                       {payoutRows.map((row, i) => {
                         if (row.type !== 'weekly') return null
-                        const rowTotal = row.amount_cents * (row.weeks ?? 0)
+                        const weekly = isWeeklyBonus(row.bonus_type)
+                        const rowTotal = weekly
+                          ? row.amount_cents * (row.weeks ?? 0)
+                          : row.amount_cents
                         return (
                           <tr key={i} className="payout-row">
                             <td>
-                              <select
+                              <CustomSelect
                                 value={row.bonus_type ?? 'weekly_high_score'}
-                                onChange={e => {
-                                  const bt = e.target.value as BonusType
+                                options={BONUS_TYPE_OPTIONS}
+                                width={220}
+                                onChange={(v) => {
+                                  const bt = v as BonusType
                                   updateWeekly(i, {
                                     bonus_type: bt,
                                     label: defaultLabelForBonusType(bt),
+                                    weeks: isWeeklyBonus(bt) ? (row.weeks ?? 14) : undefined,
                                     criteria: bt === 'score_threshold' ? { threshold: row.criteria?.threshold ?? 100 } : undefined,
                                   })
                                 }}
-                              >
-                                {BONUS_TYPE_OPTIONS.map(o => (
-                                  <option key={o.value} value={o.value}>{o.label}</option>
-                                ))}
-                              </select>
+                              />
                               {row.bonus_type === 'score_threshold' && (
                                 <input
                                   type="number"
@@ -308,16 +328,20 @@ export default function LeagueSettingsPage() {
                               </div>
                             </td>
                             <td>
-                              <input
-                                className="input-weeks"
-                                type="number"
-                                min="1"
-                                step="1"
-                                value={row.weeks ?? 0}
-                                onChange={(e) =>
-                                  updateRow(i, { weeks: parseInt(e.target.value || '0', 10) || 0 })
-                                }
-                              />
+                              {weekly ? (
+                                <input
+                                  className="input-weeks"
+                                  type="number"
+                                  min="1"
+                                  step="1"
+                                  value={row.weeks ?? 0}
+                                  onChange={(e) =>
+                                    updateRow(i, { weeks: parseInt(e.target.value || '0', 10) || 0 })
+                                  }
+                                />
+                              ) : (
+                                <span className="bonus-na">—</span>
+                              )}
                             </td>
                             <td className="payout-row-total">{formatDollars(rowTotal)}</td>
                             <td>
@@ -332,7 +356,7 @@ export default function LeagueSettingsPage() {
                   </table>
                 )}
                 <button type="button" className="btn-add-place" onClick={handleAddWeekly}>
-                  + Add Recurring Bonus
+                  + Add Bonus
                 </button>
               </section>
 
@@ -379,7 +403,7 @@ export default function LeagueSettingsPage() {
                         <p className="settings-empty">No season payouts defined.</p>
                       ) : (
                         <table className="payout-table">
-                          <thead><tr><th>Label</th><th>Amount</th></tr></thead>
+                          <thead><tr><th>Place</th><th>Amount</th></tr></thead>
                           <tbody>
                             {roPlacement.map((row, i) => (
                               <tr key={i} className="payout-row">
@@ -393,27 +417,30 @@ export default function LeagueSettingsPage() {
                     </section>
 
                     <section className="settings-section">
-                      <h2>Recurring Bonuses</h2>
+                      <h2>Bonuses</h2>
                       {roWeekly.length === 0 ? (
-                        <p className="settings-empty">No recurring bonuses defined.</p>
+                        <p className="settings-empty">No bonuses defined.</p>
                       ) : (
                         <table className="payout-table payout-table--weekly">
                           <thead>
-                            <tr><th>Bonus Type</th><th>Per Week</th><th>Weeks</th><th>Total</th></tr>
+                            <tr><th>Bonus Type</th><th>Amount</th><th>Weeks</th><th>Total</th></tr>
                           </thead>
                           <tbody>
-                            {roWeekly.map((row, i) => (
-                              <tr key={i} className="payout-row">
-                                <td>
-                                  {row.label}
-                                  {row.bonus_type === 'score_threshold' && row.criteria?.threshold != null
-                                    ? ` (≥ ${row.criteria.threshold} pts)` : ''}
-                                </td>
-                                <td>{formatDollars(row.amount_cents)}</td>
-                                <td>{row.weeks ?? 0}</td>
-                                <td>{formatDollars(row.amount_cents * (row.weeks ?? 0))}</td>
-                              </tr>
-                            ))}
+                            {roWeekly.map((row, i) => {
+                              const weekly = isWeeklyBonus(row.bonus_type)
+                              return (
+                                <tr key={i} className="payout-row">
+                                  <td>
+                                    {row.label}
+                                    {row.bonus_type === 'score_threshold' && row.criteria?.threshold != null
+                                      ? ` (≥ ${row.criteria.threshold} pts)` : ''}
+                                  </td>
+                                  <td>{formatDollars(row.amount_cents)}</td>
+                                  <td>{weekly ? (row.weeks ?? 0) : <span className="bonus-na">—</span>}</td>
+                                  <td>{formatDollars(weekly ? row.amount_cents * (row.weeks ?? 0) : row.amount_cents)}</td>
+                                </tr>
+                              )
+                            })}
                           </tbody>
                         </table>
                       )}

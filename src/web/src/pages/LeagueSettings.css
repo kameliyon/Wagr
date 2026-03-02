@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: 1.75rem;
-  max-width: 680px;
+  max-width: 900px;
 }
 
 /* ── Header ───────────────────────────────────────────────── */
@@ -74,6 +74,15 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  /* Establish an explicit stacking order so the open dropdown
+     section can be raised above its siblings via z-index. */
+  position: relative;
+  z-index: 0;
+}
+
+/* When PlaceSelect is open, lift this section above subsequent cards */
+.settings-section:has(.place-select--open) {
+  z-index: 10;
 }
 
 .settings-section h2 {
@@ -207,6 +216,10 @@
 .payout-row-total {
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.bonus-na {
+  color: var(--text-muted);
 }
 
 .payout-table th {
