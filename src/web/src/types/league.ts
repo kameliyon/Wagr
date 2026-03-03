@@ -48,6 +48,32 @@ export interface PlatformLeague {
   scoring_type: string;
 }
 
+export interface LeagueMember {
+  id: string
+  league_id: string
+  user_id: string | null
+  platform: string
+  platform_user_id: string
+  platform_username: string
+  team_name: string
+  display_name: string
+  avatar_url: string
+  is_owner: boolean
+  roster_id: number
+  wins: number
+  losses: number
+  ties: number
+  total_points: number
+  wallet_address: string
+  payment_status: 'unpaid' | 'paid' | 'refunded'
+  joined_at: string
+}
+
+export interface LeagueDetail {
+  league: League
+  members: LeagueMember[]
+}
+
 export interface PlatformProfile {
   id: string;
   user_id: string;

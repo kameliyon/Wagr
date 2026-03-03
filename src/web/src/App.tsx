@@ -3,6 +3,7 @@ import Navbar from './components/Navbar'
 import Home from './pages/Home'
 import Leagues from './pages/Leagues'
 import LeagueSettingsPage from './pages/LeagueSettings'
+import LeagueOverview from './pages/LeagueOverview'
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/leagues" element={<Leagues />} />
           <Route path="/leagues/:leagueId/settings" element={<LeagueSettingsPage />} />
+          <Route path="/leagues/:leagueId" element={<LeagueOverview />} />
         </Routes>
       </main>
     </div>

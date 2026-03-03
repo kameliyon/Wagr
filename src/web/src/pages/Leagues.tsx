@@ -134,6 +134,9 @@ export default function Leagues() {
                 </div>
               </div>
               <div className="league-card-footer">
+                <Link to={`/leagues/${league.id}`} className="btn-view">
+                  View
+                </Link>
                 <Link to={`/leagues/${league.id}/settings`} className="btn-settings">
                   Settings
                 </Link>
