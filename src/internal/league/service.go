@@ -438,12 +438,32 @@ func (s *Service) UpdateLeagueSettings(ctx context.Context, leagueID, userID str
 // GetLeagueMembers returns all members of a league
 func (s *Service) GetLeagueMembers(ctx context.Context, leagueID string) ([]LeagueMember, error) {
 	query := `
-		SELECT id, league_id, user_id, platform, platform_user_id, platform_username,
-			team_name, display_name, avatar_url, is_owner, roster_id, wins, losses, ties,
-			total_points, COALESCE(wallet_address, ''), payment_status, created_at
-		FROM league_members
-		WHERE league_id = $1
-		ORDER BY roster_id
+		SELECT
+			lm.id,
+			lm.league_id,
+			COALESCE(pp.user_id::text, lm.user_id::text) AS user_id,
+			lm.platform,
+			lm.platform_user_id,
+			lm.platform_username,
+			lm.team_name,
+			lm.display_name,
+			lm.avatar_url,
+			lm.is_owner,
+			lm.roster_id,
+			lm.wins,
+			lm.losses,
+			lm.ties,
+			lm.total_points,
+			COALESCE(u.wallet_address, lm.wallet_address, '') AS wallet_address,
+			lm.payment_status,
+			lm.created_at
+		FROM league_members lm
+		LEFT JOIN platform_profiles pp
+			ON pp.platform = lm.platform
+			AND pp.platform_user_id = lm.platform_user_id
+		LEFT JOIN users u ON u.id = pp.user_id
+		WHERE lm.league_id = $1
+		ORDER BY lm.roster_id
 	`
 
 	rows, err := s.db.Query(ctx, query, leagueID)
