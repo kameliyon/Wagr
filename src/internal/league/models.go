@@ -57,6 +57,7 @@ type LeagueMember struct {
 	Platform         string    `json:"platform"`
 	PlatformUserID   string    `json:"platform_user_id"`
 	PlatformUsername string    `json:"platform_username,omitempty"`
+	TeamName         string    `json:"team_name,omitempty"`
 	DisplayName      string    `json:"display_name"`
 	AvatarURL        string    `json:"avatar_url,omitempty"`
 	IsOwner          bool      `json:"is_owner"`

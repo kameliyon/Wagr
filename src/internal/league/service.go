@@ -164,12 +164,13 @@ func (s *Service) ImportLeague(ctx context.Context, userID string, req ImportLea
 	memberQuery := `
 		INSERT INTO league_members (
 			league_id, platform, platform_user_id, platform_username,
-			display_name, avatar_url, is_owner, roster_id,
+			team_name, display_name, avatar_url, is_owner, roster_id,
 			wins, losses, ties, total_points
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		ON CONFLICT (league_id, platform_user_id)
 		DO UPDATE SET
+			team_name = EXCLUDED.team_name,
 			display_name = EXCLUDED.display_name,
 			avatar_url = EXCLUDED.avatar_url,
 			wins = EXCLUDED.wins,
@@ -178,7 +179,7 @@ func (s *Service) ImportLeague(ctx context.Context, userID string, req ImportLea
 			total_points = EXCLUDED.total_points,
 			updated_at = NOW()
 		RETURNING id, league_id, user_id, platform, platform_user_id, platform_username,
-			display_name, avatar_url, is_owner, roster_id, wins, losses, ties,
+			team_name, display_name, avatar_url, is_owner, roster_id, wins, losses, ties,
 			total_points, COALESCE(wallet_address, ''), payment_status, created_at
 	`
 
@@ -196,11 +197,14 @@ func (s *Service) ImportLeague(ctx context.Context, userID string, req ImportLea
 			totalPoints = roster.TotalPoints
 		}
 
+		teamName := pm.Metadata["team_name"]
+
 		err = tx.QueryRow(ctx, memberQuery,
 			league.ID,
 			req.Platform,
 			pm.PlatformUserID,
 			pm.Username,
+			teamName,
 			pm.DisplayName,
 			pm.AvatarURL,
 			pm.IsOwner,
@@ -216,6 +220,7 @@ func (s *Service) ImportLeague(ctx context.Context, userID string, req ImportLea
 			&member.Platform,
 			&member.PlatformUserID,
 			&member.PlatformUsername,
+			&member.TeamName,
 			&member.DisplayName,
 			&member.AvatarURL,
 			&member.IsOwner,
@@ -434,7 +439,7 @@ func (s *Service) UpdateLeagueSettings(ctx context.Context, leagueID, userID str
 func (s *Service) GetLeagueMembers(ctx context.Context, leagueID string) ([]LeagueMember, error) {
 	query := `
 		SELECT id, league_id, user_id, platform, platform_user_id, platform_username,
-			display_name, avatar_url, is_owner, roster_id, wins, losses, ties,
+			team_name, display_name, avatar_url, is_owner, roster_id, wins, losses, ties,
 			total_points, COALESCE(wallet_address, ''), payment_status, created_at
 		FROM league_members
 		WHERE league_id = $1
@@ -457,6 +462,7 @@ func (s *Service) GetLeagueMembers(ctx context.Context, leagueID string) ([]Leag
 			&member.Platform,
 			&member.PlatformUserID,
 			&member.PlatformUsername,
+			&member.TeamName,
 			&member.DisplayName,
 			&member.AvatarURL,
 			&member.IsOwner,
