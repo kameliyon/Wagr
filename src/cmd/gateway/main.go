@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -74,7 +75,8 @@ func main() {
 	})
 
 	// League management routes (NEW - requires authentication)
-	leagueService := league.NewService(db.Pool, platformService)
+	hederaUSDCTokenID := os.Getenv("HEDERA_USDC_TOKEN_ID")
+	leagueService := league.NewService(db.Pool, platformService, hederaUSDCTokenID)
 	leagueHandlers := league.NewHandler(leagueService)
 	r.Route("/api/leagues", func(r chi.Router) {
 		r.Use(authHandlers.AuthMiddleware)
@@ -85,6 +87,9 @@ func main() {
 		r.Delete("/{leagueId}", leagueHandlers.DeleteLeague)
 		r.Get("/{leagueId}/settings", leagueHandlers.GetLeagueSettings)
 		r.Put("/{leagueId}/settings", leagueHandlers.UpdateLeagueSettings)
+		r.Post("/{leagueId}/payment-token", leagueHandlers.SetPaymentToken)
+		r.Post("/{leagueId}/pay", leagueHandlers.InitiatePayment)
+		r.Get("/{leagueId}/payment-status", leagueHandlers.GetPaymentStatus)
 		r.Post("/{leagueId}/oracle/week-results", leagueHandlers.OracleWeekResults)
 	})
 

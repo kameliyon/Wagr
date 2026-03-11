@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useWallet } from '../hooks/useWallet'
-import type { LeagueDetail, LeagueSettings, LeagueMember } from '../types/league'
+import type { LeagueDetail, LeagueSettings, LeagueMember, PaymentToken, PayStubResponse } from '../types/league'
 import './LeagueOverview.css'
 
 const formatDollars = (cents: number) =>
@@ -30,9 +30,18 @@ function Avatar({ member }: { member: LeagueMember }) {
   return <div className="team-avatar team-avatar--initials">{initials(member.display_name)}</div>
 }
 
+function TokenBadge({ token }: { token: PaymentToken | null }) {
+  if (!token) return <span className="token-badge token-badge--none">—</span>
+  return (
+    <span className={`token-badge token-badge--${token}`}>
+      {token.toUpperCase()}
+    </span>
+  )
+}
+
 export default function LeagueOverview() {
   const { leagueId } = useParams<{ leagueId: string }>()
-  const { isAuthenticated, token } = useWallet()
+  const { isAuthenticated, token, user } = useWallet()
   const navigate = useNavigate()
 
   const [detail, setDetail] = useState<LeagueDetail | null>(null)
@@ -41,6 +50,12 @@ export default function LeagueOverview() {
   const [error, setError] = useState<string | null>(null)
   const [notMember, setNotMember] = useState(false)
   const [copied, setCopied] = useState(false)
+
+  // Payment panel state
+  const [payMessage, setPayMessage] = useState<string | null>(null)
+  const [payError, setPayError] = useState<string | null>(null)
+  const [payLoading, setPayLoading] = useState(false)
+  const [tokenLoading, setTokenLoading] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated) navigate('/')
@@ -84,6 +99,59 @@ export default function LeagueOverview() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // Select payment token — persists to DB immediately
+  const handleSelectToken = async (selectedToken: PaymentToken) => {
+    if (!token || !leagueId) return
+    setTokenLoading(true)
+    setPayError(null)
+    try {
+      const res = await fetch(`/api/leagues/${leagueId}/payment-token`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: selectedToken }),
+      })
+      if (!res.ok) throw new Error(`Failed to set token (${res.status})`)
+      // Update local state so badge refreshes without full reload
+      setDetail((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          members: prev.members.map((m) =>
+            m.user_id === user?.id ? { ...m, payment_token: selectedToken } : m
+          ),
+        }
+      })
+    } catch (err) {
+      setPayError(err instanceof Error ? err.message : 'Failed to set token')
+    } finally {
+      setTokenLoading(false)
+    }
+  }
+
+  const handlePay = async () => {
+    if (!token || !leagueId) return
+    setPayLoading(true)
+    setPayMessage(null)
+    setPayError(null)
+    try {
+      const res = await fetch(`/api/leagues/${leagueId}/pay`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const msg = await res.text()
+        throw new Error(msg || `Error ${res.status}`)
+      }
+      const stub = await res.json() as PayStubResponse
+      console.log('[WAGR Payment Stub]', stub)
+      setPayMessage(stub.message)
+    } catch (err) {
+      setPayError(err instanceof Error ? err.message : 'Payment failed')
+    } finally {
+      setPayLoading(false)
+    }
+  }
+
   if (!isAuthenticated) return null
 
   if (loading) {
@@ -123,6 +191,9 @@ export default function LeagueOverview() {
   const sorted = [...members].sort((a, b) => b.total_points - a.total_points)
   const prizePool = settings.entry_fee_cents * settings.total_rosters
   const isCommissioner = settings.is_commissioner
+
+  // Find the current user's member record
+  const myMember = members.find((m) => m.user_id === user?.id) ?? null
 
   return (
     <div className="overview-page">
@@ -180,6 +251,7 @@ export default function LeagueOverview() {
                 <th>Record</th>
                 <th>Points</th>
                 <th>Wagr</th>
+                <th>Token</th>
                 <th>Payment</th>
               </tr>
             </thead>
@@ -212,6 +284,9 @@ export default function LeagueOverview() {
                       </span>
                     </td>
                     <td>
+                      <TokenBadge token={member.payment_token} />
+                    </td>
+                    <td>
                       <span className={`badge badge--${member.payment_status}`}>
                         {member.payment_status.charAt(0).toUpperCase() + member.payment_status.slice(1)}
                       </span>
@@ -223,6 +298,74 @@ export default function LeagueOverview() {
           </table>
         )}
       </div>
+
+      {/* Payment action panel — current user only */}
+      {myMember && (
+        <div className="payment-panel">
+          <h2>Your Payment</h2>
+          {myMember.payment_status === 'paid' ? (
+            <div className="payment-paid">
+              <span className="badge badge--paid">Paid</span>
+              {myMember.transaction_hash && (
+                <a
+                  className="hashscan-link"
+                  href={`https://hashscan.io/testnet/transaction/${myMember.transaction_hash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  View on HashScan
+                </a>
+              )}
+            </div>
+          ) : (
+            <>
+              {!myMember.wallet_address && (
+                <p className="payment-warning">Connect your wallet to enable payment.</p>
+              )}
+              <div className="token-toggle">
+                <span className="token-toggle-label">Pay with:</span>
+                <button
+                  className={`token-toggle-btn${myMember.payment_token === 'hbar' ? ' token-toggle-btn--active' : ''}`}
+                  onClick={() => handleSelectToken('hbar')}
+                  disabled={tokenLoading}
+                >
+                  HBAR
+                </button>
+                <button
+                  className={`token-toggle-btn token-toggle-btn--usdc${myMember.payment_token === 'usdc' ? ' token-toggle-btn--active' : ''}`}
+                  onClick={() => handleSelectToken('usdc')}
+                  disabled={tokenLoading}
+                >
+                  USDC
+                </button>
+              </div>
+
+              <div className="payment-amount">
+                {myMember.payment_token === 'usdc' && (
+                  <span>{formatDollars(settings.entry_fee_cents)} USDC</span>
+                )}
+                {myMember.payment_token === 'hbar' && (
+                  <span>~[TBD] HBAR ({formatDollars(settings.entry_fee_cents)} equivalent)</span>
+                )}
+                {!myMember.payment_token && (
+                  <span className="payment-amount--placeholder">Select a token above</span>
+                )}
+              </div>
+
+              <button
+                className="btn-primary payment-btn"
+                onClick={handlePay}
+                disabled={payLoading || !myMember.payment_token || !myMember.wallet_address}
+              >
+                {payLoading ? 'Processing…' : 'Pay Entry Fee'}
+              </button>
+
+              {payMessage && <p className="payment-message">{payMessage}</p>}
+              {payError && <p className="payment-error">{payError}</p>}
+            </>
+          )}
+        </div>
+      )}
 
       {/* Invite banner (commissioner only) */}
       {isCommissioner && (

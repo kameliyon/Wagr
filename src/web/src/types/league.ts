@@ -48,6 +48,8 @@ export interface PlatformLeague {
   scoring_type: string;
 }
 
+export type PaymentToken = 'hbar' | 'usdc'
+
 export interface LeagueMember {
   id: string
   league_id: string
@@ -66,7 +68,20 @@ export interface LeagueMember {
   total_points: number
   wallet_address: string
   payment_status: 'unpaid' | 'paid' | 'refunded'
+  payment_token: PaymentToken | null
+  transaction_hash?: string
+  paid_at?: string
   joined_at: string
+}
+
+export interface PayStubResponse {
+  status: 'pending_signature'
+  token: PaymentToken
+  amount_cents: number
+  amount_formatted: string
+  recipient_note: string
+  usdc_token_id?: string
+  message: string
 }
 
 export interface LeagueDetail {

@@ -66,9 +66,12 @@ type LeagueMember struct {
 	Losses           int       `json:"losses"`
 	Ties             int       `json:"ties"`
 	TotalPoints      float64   `json:"total_points"`
-	WalletAddress    string    `json:"wallet_address,omitempty"`
-	PaymentStatus    string    `json:"payment_status"` // 'unpaid', 'paid', 'refunded'
-	JoinedAt         time.Time `json:"joined_at"`
+	WalletAddress    string     `json:"wallet_address,omitempty"`
+	PaymentStatus    string     `json:"payment_status"` // 'unpaid', 'paid', 'refunded'
+	PaymentToken     *string    `json:"payment_token,omitempty"`    // 'hbar' | 'usdc' | null
+	TransactionHash  *string    `json:"transaction_hash,omitempty"`
+	PaidAt           *time.Time `json:"paid_at,omitempty"`
+	JoinedAt         time.Time  `json:"joined_at"`
 }
 
 // LinkPlatformRequest is the request payload for linking a fantasy platform account
@@ -96,6 +99,23 @@ type ImportLeagueResponse struct {
 }
 
 var ErrNotCommissioner = errors.New("user is not commissioner of this league")
+var ErrNotLeagueMember = errors.New("user is not a member of this league")
+
+// SetPaymentTokenRequest is the request payload for selecting a payment token
+type SetPaymentTokenRequest struct {
+	Token string `json:"token"` // "hbar" or "usdc"
+}
+
+// PayStubResponse is the response for initiating a payment
+type PayStubResponse struct {
+	Status          string `json:"status"`                     // "pending_signature"
+	Token           string `json:"token"`
+	AmountCents     int64  `json:"amount_cents"`
+	AmountFormatted string `json:"amount_formatted"`           // e.g. "50.00 USDC" or "~X HBAR"
+	RecipientNote   string `json:"recipient_note"`
+	USDCTokenID     string `json:"usdc_token_id,omitempty"`
+	Message         string `json:"message"`
+}
 
 // BonusCriteria holds type-specific parameters for weekly bonus entries.
 type BonusCriteria struct {

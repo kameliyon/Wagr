@@ -178,6 +178,78 @@ func (h *Handler) UpdateLeagueSettings(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(settings)
 }
 
+// SetPaymentToken handles POST /{leagueId}/payment-token
+func (h *Handler) SetPaymentToken(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	leagueID := chi.URLParam(r, "leagueId")
+	var req SetPaymentTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	err := h.service.SetPaymentToken(r.Context(), leagueID, claims.UserID, req.Token)
+	if err != nil {
+		if errors.Is(err, ErrNotLeagueMember) {
+			http.Error(w, "not a member of this league", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// InitiatePayment handles POST /{leagueId}/pay
+func (h *Handler) InitiatePayment(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	leagueID := chi.URLParam(r, "leagueId")
+	stub, err := h.service.InitiatePayment(r.Context(), leagueID, claims.UserID)
+	if err != nil {
+		if errors.Is(err, ErrNotLeagueMember) {
+			http.Error(w, "not a member of this league", http.StatusNotFound)
+			return
+		}
+		msg := err.Error()
+		if msg == "already paid" {
+			http.Error(w, msg, http.StatusConflict)
+			return
+		}
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(stub)
+}
+
+// GetPaymentStatus handles GET /{leagueId}/payment-status
+func (h *Handler) GetPaymentStatus(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	leagueID := chi.URLParam(r, "leagueId")
+	members, err := h.service.GetPaymentStatus(r.Context(), leagueID, claims.UserID)
+	if err != nil {
+		if errors.Is(err, ErrNotLeagueMember) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(members)
+}
+
 // OracleWeekResults is a placeholder for the Hedera Oracle integration.
 // It will accept signed weekly score data and trigger on-chain bonus payouts.
 func (h *Handler) OracleWeekResults(w http.ResponseWriter, r *http.Request) {

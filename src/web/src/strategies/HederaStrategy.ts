@@ -1,6 +1,6 @@
 // Hedera wallet strategy implementation using Hedera Wallet Connect
 
-import type { WalletStrategy, WalletState, SignatureResult } from '../types/wallet'
+import type { WalletStrategy, WalletState, SignatureResult, TransferHBARParams, TransferHTSParams, PaymentResult } from '../types/wallet'
 import type { HederaNetworkId } from '../types/hedera'
 import { HEDERA_DEFAULT_NETWORK } from '../utils/walletConstants'
 
@@ -284,6 +284,31 @@ export class HederaStrategy implements WalletStrategy {
             console.error('Error signing message with Hedera Wallet Connect:', err)
             throw err
         }
+    }
+
+    /**
+     * Stub: Transfer HBAR between accounts.
+     * TODO: implement using Hedera SDK CryptoTransferTransaction via WalletConnect signer.
+     */
+    async transferHBAR(params: TransferHBARParams): Promise<PaymentResult> {
+        console.log('[WAGR Payment Stub] transferHBAR called', params)
+        // Stub returns a mock transaction ID — no real transaction is submitted.
+        const mockTxId = `0.0.stub@${Date.now()}.000000000`
+        return { transactionId: mockTxId, status: 'stub' }
+    }
+
+    /**
+     * Stub: Transfer an HTS token (e.g. USDC) between accounts.
+     * TODO: implement using Hedera SDK TransferTransaction for HTS tokens.
+     * ⚠️ IMPORTANT: Both sender and recipient must have associated the token (tokenId)
+     * before any transfer can succeed — this is a Hedera-specific requirement with no
+     * Ethereum equivalent. The smart contract phase must handle auto-association or
+     * pre-associate all accounts before transfers are attempted.
+     */
+    async transferHTS(params: TransferHTSParams): Promise<PaymentResult> {
+        console.log('[WAGR Payment Stub] transferHTS called', params)
+        const mockTxId = `0.0.stub@${Date.now()}.000000000`
+        return { transactionId: mockTxId, status: 'stub' }
     }
 
     getDefaultNetwork(): string {

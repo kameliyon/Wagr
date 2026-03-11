@@ -9,19 +9,22 @@ import (
 	"wagr/src/internal/fantasy"
 	"wagr/src/internal/fantasy/sleeper"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Service struct {
-	db              *pgxpool.Pool
-	platformService *fantasy.PlatformService
-	sleeperClient   *sleeper.Client // DEPRECATED: Kept for backward compatibility
+	db                  *pgxpool.Pool
+	platformService     *fantasy.PlatformService
+	sleeperClient       *sleeper.Client // DEPRECATED: Kept for backward compatibility
+	hederaUSDCTokenID   string
 }
 
-func NewService(db *pgxpool.Pool, platformService *fantasy.PlatformService) *Service {
+func NewService(db *pgxpool.Pool, platformService *fantasy.PlatformService, hederaUSDCTokenID string) *Service {
 	return &Service{
-		db:              db,
-		platformService: platformService,
+		db:                db,
+		platformService:   platformService,
+		hederaUSDCTokenID: hederaUSDCTokenID,
 	}
 }
 
@@ -180,7 +183,8 @@ func (s *Service) ImportLeague(ctx context.Context, userID string, req ImportLea
 			updated_at = NOW()
 		RETURNING id, league_id, user_id, platform, platform_user_id, platform_username,
 			team_name, display_name, avatar_url, is_owner, roster_id, wins, losses, ties,
-			total_points, COALESCE(wallet_address, ''), payment_status, created_at
+			total_points, COALESCE(wallet_address, ''), payment_status, created_at,
+			payment_token, transaction_hash, paid_at
 	`
 
 	members := make([]LeagueMember, 0, len(platformMembers))
@@ -232,6 +236,9 @@ func (s *Service) ImportLeague(ctx context.Context, userID string, req ImportLea
 			&member.WalletAddress,
 			&member.PaymentStatus,
 			&member.JoinedAt,
+			&member.PaymentToken,
+			&member.TransactionHash,
+			&member.PaidAt,
 		)
 
 		if err != nil {
@@ -456,7 +463,10 @@ func (s *Service) GetLeagueMembers(ctx context.Context, leagueID string) ([]Leag
 			lm.total_points,
 			COALESCE(u.wallet_address, lm.wallet_address, '') AS wallet_address,
 			lm.payment_status,
-			lm.created_at
+			lm.created_at,
+			lm.payment_token,
+			lm.transaction_hash,
+			lm.paid_at
 		FROM league_members lm
 		LEFT JOIN platform_profiles pp
 			ON pp.platform = lm.platform
@@ -494,6 +504,9 @@ func (s *Service) GetLeagueMembers(ctx context.Context, leagueID string) ([]Leag
 			&member.WalletAddress,
 			&member.PaymentStatus,
 			&member.JoinedAt,
+			&member.PaymentToken,
+			&member.TransactionHash,
+			&member.PaidAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan league member: %w", err)
@@ -504,4 +517,101 @@ func (s *Service) GetLeagueMembers(ctx context.Context, leagueID string) ([]Leag
 	return members, nil
 }
 
+// SetPaymentToken sets the payment token (hbar or usdc) for the calling user's membership
+func (s *Service) SetPaymentToken(ctx context.Context, leagueID, userID, token string) error {
+	if token != "hbar" && token != "usdc" {
+		return fmt.Errorf("invalid token: must be 'hbar' or 'usdc'")
+	}
+
+	result, err := s.db.Exec(ctx, `
+		UPDATE league_members lm
+		SET payment_token = $3, updated_at = NOW()
+		FROM platform_profiles pp
+		WHERE lm.league_id = $1
+		  AND lm.platform = pp.platform
+		  AND lm.platform_user_id = pp.platform_user_id
+		  AND pp.user_id = $2
+	`, leagueID, userID, token)
+	if err != nil {
+		return fmt.Errorf("failed to set payment token: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return ErrNotLeagueMember
+	}
+	return nil
+}
+
+// InitiatePayment returns a stub payment response for the calling user's membership
+func (s *Service) InitiatePayment(ctx context.Context, leagueID, userID string) (*PayStubResponse, error) {
+	var entryFeeCents int64
+	var paymentToken *string
+	var paymentStatus string
+
+	err := s.db.QueryRow(ctx, `
+		SELECT l.entry_fee_cents, lm.payment_token, lm.payment_status
+		FROM league_members lm
+		JOIN leagues l ON l.id = lm.league_id
+		JOIN platform_profiles pp ON pp.platform = lm.platform AND pp.platform_user_id = lm.platform_user_id
+		WHERE lm.league_id = $1 AND pp.user_id = $2
+	`, leagueID, userID).Scan(&entryFeeCents, &paymentToken, &paymentStatus)
+
+	if err == pgx.ErrNoRows {
+		return nil, ErrNotLeagueMember
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch member payment info: %w", err)
+	}
+
+	if paymentStatus == "paid" {
+		return nil, fmt.Errorf("already paid")
+	}
+	if paymentToken == nil {
+		return nil, fmt.Errorf("must select a payment token first")
+	}
+
+	tok := *paymentToken
+	var amountFormatted string
+	var usdcTokenID string
+
+	if tok == "usdc" {
+		// USDC on Hedera: 6 decimal places — $1.00 = 1_000_000 micro-USDC
+		// amount_cents is in USD cents, so $50.00 entry = 5000 cents = 50.00 USDC
+		dollars := float64(entryFeeCents) / 100.0
+		amountFormatted = fmt.Sprintf("%.2f USDC", dollars)
+		usdcTokenID = s.hederaUSDCTokenID
+	} else {
+		// HBAR: real rate deferred; use Mirror Node /api/v1/network/exchangerate in next phase
+		amountFormatted = "~[rate TBD] HBAR"
+	}
+
+	return &PayStubResponse{
+		Status:          "pending_signature",
+		Token:           tok,
+		AmountCents:     entryFeeCents,
+		AmountFormatted: amountFormatted,
+		RecipientNote:   "Payment will be sent to the league smart contract (stub — no transaction submitted)",
+		USDCTokenID:     usdcTokenID,
+		Message:         fmt.Sprintf("[WAGR Payment Stub] Would transfer %s for league %s. Awaiting smart contract integration.", amountFormatted, leagueID),
+	}, nil
+}
+
+// GetPaymentStatus returns the full member list for a league, gated to league members only
+func (s *Service) GetPaymentStatus(ctx context.Context, leagueID, userID string) ([]LeagueMember, error) {
+	var exists bool
+	err := s.db.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM league_members lm
+			JOIN platform_profiles pp ON pp.platform = lm.platform AND pp.platform_user_id = lm.platform_user_id
+			WHERE lm.league_id = $1 AND pp.user_id = $2
+		)
+	`, leagueID, userID).Scan(&exists)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify league membership: %w", err)
+	}
+	if !exists {
+		return nil, ErrNotLeagueMember
+	}
+
+	return s.GetLeagueMembers(ctx, leagueID)
+}
 
