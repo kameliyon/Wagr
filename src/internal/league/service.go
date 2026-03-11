@@ -377,7 +377,7 @@ func (s *Service) DeleteLeague(ctx context.Context, leagueID, userID string) err
 func (s *Service) GetLeagueSettings(ctx context.Context, leagueID, userID string) (*LeagueSettings, error) {
 	query := `
 		SELECT l.entry_fee_cents, l.total_rosters, l.payout_structure,
-			COALESCE(BOOL_OR(lm.is_owner), false) AS is_commissioner
+			COALESCE(BOOL_OR(lm.is_owner) FILTER (WHERE pp.user_id IS NOT NULL), false) AS is_commissioner
 		FROM leagues l
 		LEFT JOIN league_members lm ON lm.league_id = l.id
 		LEFT JOIN platform_profiles pp ON pp.platform = lm.platform
