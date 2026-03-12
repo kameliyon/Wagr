@@ -18,19 +18,6 @@ type PlatformProfile struct {
 	UpdatedAt        time.Time `json:"updated_at"`
 }
 
-// SleeperProfile represents a link between a WAGR user and their Sleeper account
-// DEPRECATED: Use PlatformProfile instead. Kept for backward compatibility.
-type SleeperProfile struct {
-	ID                 int       `json:"id"`
-	UserID             string    `json:"user_id"`
-	SleeperUserID      string    `json:"sleeper_user_id"`
-	SleeperUsername    string    `json:"sleeper_username"`
-	SleeperDisplayName string    `json:"sleeper_display_name,omitempty"`
-	SleeperAvatar      string    `json:"sleeper_avatar,omitempty"`
-	LinkedAt           time.Time `json:"linked_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
-}
-
 // League represents an imported fantasy league from any platform
 type League struct {
 	ID               string     `json:"id"`
@@ -78,12 +65,6 @@ type LeagueMember struct {
 type LinkPlatformRequest struct {
 	Platform         string `json:"platform"`          // 'sleeper', 'espn', 'yahoo'
 	PlatformUsername string `json:"platform_username"` // Username to lookup on the platform
-}
-
-// LinkSleeperRequest is the request payload for linking a Sleeper account
-// DEPRECATED: Use LinkPlatformRequest instead. Kept for backward compatibility.
-type LinkSleeperRequest struct {
-	SleeperUsername string `json:"sleeper_username"`
 }
 
 // ImportLeagueRequest is the request payload for importing a league

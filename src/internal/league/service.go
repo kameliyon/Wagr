@@ -7,17 +7,15 @@ import (
 	"time"
 
 	"wagr/src/internal/fantasy"
-	"wagr/src/internal/fantasy/sleeper"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Service struct {
-	db                  *pgxpool.Pool
-	platformService     *fantasy.PlatformService
-	sleeperClient       *sleeper.Client // DEPRECATED: Kept for backward compatibility
-	hederaUSDCTokenID   string
+	db                *pgxpool.Pool
+	platformService   *fantasy.PlatformService
+	hederaUSDCTokenID string
 }
 
 func NewService(db *pgxpool.Pool, platformService *fantasy.PlatformService, hederaUSDCTokenID string) *Service {
@@ -25,15 +23,6 @@ func NewService(db *pgxpool.Pool, platformService *fantasy.PlatformService, hede
 		db:                db,
 		platformService:   platformService,
 		hederaUSDCTokenID: hederaUSDCTokenID,
-	}
-}
-
-// NewServiceWithSleeperClient creates a service with legacy Sleeper client support
-// DEPRECATED: Use NewService with PlatformService instead
-func NewServiceWithSleeperClient(db *pgxpool.Pool, sleeperClient *sleeper.Client) *Service {
-	return &Service{
-		db:            db,
-		sleeperClient: sleeperClient,
 	}
 }
 
