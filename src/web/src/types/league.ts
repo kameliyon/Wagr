@@ -84,6 +84,13 @@ export interface PayStubResponse {
   message: string
 }
 
+export interface PaymentInstructions {
+  contract_id: string       // Hedera contract ID, e.g. "0.0.5555555"
+  usdc_token_id: string     // Hedera token ID, e.g. "0.0.456858"
+  amount_usdc: number       // 6-decimal USDC units (e.g. $50.00 = 50_000_000)
+  amount_formatted: string  // e.g. "$50.00 USDC"
+}
+
 export interface LeagueDetail {
   league: League
   members: LeagueMember[]

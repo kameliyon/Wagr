@@ -203,7 +203,7 @@ func (h *Handler) SetPaymentToken(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// InitiatePayment handles POST /{leagueId}/pay
+// InitiatePayment handles POST /{leagueId}/pay — returns USDC escrow payment instructions
 func (h *Handler) InitiatePayment(w http.ResponseWriter, r *http.Request) {
 	claims := auth.GetClaimsFromContext(r.Context())
 	if claims == nil {
@@ -211,22 +211,60 @@ func (h *Handler) InitiatePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	leagueID := chi.URLParam(r, "leagueId")
-	stub, err := h.service.InitiatePayment(r.Context(), leagueID, claims.UserID)
+	instructions, err := h.service.InitiatePayment(r.Context(), leagueID, claims.UserID)
 	if err != nil {
 		if errors.Is(err, ErrNotLeagueMember) {
 			http.Error(w, "not a member of this league", http.StatusNotFound)
 			return
 		}
-		msg := err.Error()
-		if msg == "already paid" {
-			http.Error(w, msg, http.StatusConflict)
+		if errors.Is(err, ErrAlreadyPaid) {
+			http.Error(w, "already paid", http.StatusConflict)
 			return
 		}
-		http.Error(w, msg, http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stub)
+	json.NewEncoder(w).Encode(instructions)
+}
+
+// ConfirmPayment handles POST /{leagueId}/confirm-payment
+func (h *Handler) ConfirmPayment(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	leagueID := chi.URLParam(r, "leagueId")
+
+	var req ConfirmPaymentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.TransactionID == "" {
+		http.Error(w, "transaction_id is required", http.StatusBadRequest)
+		return
+	}
+
+	err := h.service.ConfirmPayment(r.Context(), leagueID, claims.UserID, req.TransactionID)
+	if err != nil {
+		if errors.Is(err, ErrNotLeagueMember) {
+			http.Error(w, "not a member of this league", http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, ErrAlreadyPaid) {
+			http.Error(w, "already paid", http.StatusConflict)
+			return
+		}
+		if errors.Is(err, ErrPaymentInsufficient) {
+			http.Error(w, "on-chain payment not found or insufficient", http.StatusPaymentRequired)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GetPaymentStatus handles GET /{leagueId}/payment-status

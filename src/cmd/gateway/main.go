@@ -76,7 +76,9 @@ func main() {
 
 	// League management routes (NEW - requires authentication)
 	hederaUSDCTokenID := os.Getenv("HEDERA_USDC_TOKEN_ID")
-	leagueService := league.NewService(db.Pool, platformService, hederaUSDCTokenID)
+	hederaEscrowContractID := os.Getenv("HEDERA_ESCROW_CONTRACT_ID")
+	hederaNetwork := os.Getenv("HEDERA_NETWORK")
+	leagueService := league.NewService(db.Pool, platformService, hederaUSDCTokenID, hederaEscrowContractID, hederaNetwork)
 	leagueHandlers := league.NewHandler(leagueService)
 	r.Route("/api/leagues", func(r chi.Router) {
 		r.Use(authHandlers.AuthMiddleware)
@@ -89,6 +91,7 @@ func main() {
 		r.Put("/{leagueId}/settings", leagueHandlers.UpdateLeagueSettings)
 		r.Post("/{leagueId}/payment-token", leagueHandlers.SetPaymentToken)
 		r.Post("/{leagueId}/pay", leagueHandlers.InitiatePayment)
+		r.Post("/{leagueId}/confirm-payment", leagueHandlers.ConfirmPayment)
 		r.Get("/{leagueId}/payment-status", leagueHandlers.GetPaymentStatus)
 		r.Post("/{leagueId}/oracle/week-results", leagueHandlers.OracleWeekResults)
 	})

@@ -16,6 +16,8 @@ export function useWallet() {
     accountId: wallet.walletState?.accountId ?? null, // For Hedera
     balance: wallet.walletState?.balance ?? null,
     network: wallet.walletState?.network ?? null,
+    walletState: wallet.walletState,
+    activeStrategy: wallet.activeStrategy,
 
     // Auth data
     user: wallet.user,

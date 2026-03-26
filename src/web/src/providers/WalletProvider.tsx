@@ -19,6 +19,7 @@ interface WalletContextType {
   isConnecting: boolean
   isAuthenticating: boolean
   walletState: WalletState | null
+  activeStrategy: WalletStrategy | null
   user: User | null
   token: string | null
   availableWallets: AvailableWallet[]
@@ -237,6 +238,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         isConnecting,
         isAuthenticating,
         walletState,
+        activeStrategy,
         user,
         token,
         availableWallets,

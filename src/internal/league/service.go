@@ -1,28 +1,42 @@
 package league
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"time"
 
 	"wagr/src/internal/fantasy"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/sha3"
 )
 
 type Service struct {
-	db                *pgxpool.Pool
-	platformService   *fantasy.PlatformService
-	hederaUSDCTokenID string
+	db                      *pgxpool.Pool
+	platformService         *fantasy.PlatformService
+	hederaUSDCTokenID       string
+	hederaEscrowContractID  string
+	hederaNetwork           string
 }
 
-func NewService(db *pgxpool.Pool, platformService *fantasy.PlatformService, hederaUSDCTokenID string) *Service {
+func NewService(db *pgxpool.Pool, platformService *fantasy.PlatformService, hederaUSDCTokenID, hederaEscrowContractID, hederaNetwork string) *Service {
+	if hederaNetwork == "" {
+		hederaNetwork = "testnet"
+	}
 	return &Service{
-		db:                db,
-		platformService:   platformService,
-		hederaUSDCTokenID: hederaUSDCTokenID,
+		db:                     db,
+		platformService:        platformService,
+		hederaUSDCTokenID:      hederaUSDCTokenID,
+		hederaEscrowContractID: hederaEscrowContractID,
+		hederaNetwork:          hederaNetwork,
 	}
 }
 
@@ -530,19 +544,18 @@ func (s *Service) SetPaymentToken(ctx context.Context, leagueID, userID, token s
 	return nil
 }
 
-// InitiatePayment returns a stub payment response for the calling user's membership
-func (s *Service) InitiatePayment(ctx context.Context, leagueID, userID string) (*PayStubResponse, error) {
+// InitiatePayment returns USDC escrow payment instructions for the calling user's membership
+func (s *Service) InitiatePayment(ctx context.Context, leagueID, userID string) (*PaymentInstructions, error) {
 	var entryFeeCents int64
-	var paymentToken *string
 	var paymentStatus string
 
 	err := s.db.QueryRow(ctx, `
-		SELECT l.entry_fee_cents, lm.payment_token, lm.payment_status
+		SELECT l.entry_fee_cents, lm.payment_status
 		FROM league_members lm
 		JOIN leagues l ON l.id = lm.league_id
 		JOIN platform_profiles pp ON pp.platform = lm.platform AND pp.platform_user_id = lm.platform_user_id
 		WHERE lm.league_id = $1 AND pp.user_id = $2
-	`, leagueID, userID).Scan(&entryFeeCents, &paymentToken, &paymentStatus)
+	`, leagueID, userID).Scan(&entryFeeCents, &paymentStatus)
 
 	if err == pgx.ErrNoRows {
 		return nil, ErrNotLeagueMember
@@ -552,36 +565,206 @@ func (s *Service) InitiatePayment(ctx context.Context, leagueID, userID string) 
 	}
 
 	if paymentStatus == "paid" {
-		return nil, fmt.Errorf("already paid")
-	}
-	if paymentToken == nil {
-		return nil, fmt.Errorf("must select a payment token first")
+		return nil, ErrAlreadyPaid
 	}
 
-	tok := *paymentToken
-	var amountFormatted string
-	var usdcTokenID string
+	// entry_fee_cents → 6-decimal USDC: $50.00 = 5000 cents = 50_000_000 micro-USDC
+	amountUSDC := entryFeeCents * 10_000
+	dollars := float64(entryFeeCents) / 100.0
 
-	if tok == "usdc" {
-		// USDC on Hedera: 6 decimal places — $1.00 = 1_000_000 micro-USDC
-		// amount_cents is in USD cents, so $50.00 entry = 5000 cents = 50.00 USDC
-		dollars := float64(entryFeeCents) / 100.0
-		amountFormatted = fmt.Sprintf("%.2f USDC", dollars)
-		usdcTokenID = s.hederaUSDCTokenID
-	} else {
-		// HBAR: real rate deferred; use Mirror Node /api/v1/network/exchangerate in next phase
-		amountFormatted = "~[rate TBD] HBAR"
-	}
-
-	return &PayStubResponse{
-		Status:          "pending_signature",
-		Token:           tok,
-		AmountCents:     entryFeeCents,
-		AmountFormatted: amountFormatted,
-		RecipientNote:   "Payment will be sent to the league smart contract (stub — no transaction submitted)",
-		USDCTokenID:     usdcTokenID,
-		Message:         fmt.Sprintf("[WAGR Payment Stub] Would transfer %s for league %s. Awaiting smart contract integration.", amountFormatted, leagueID),
+	return &PaymentInstructions{
+		ContractID:      s.hederaEscrowContractID,
+		USDCTokenID:     s.hederaUSDCTokenID,
+		AmountUSDC:      amountUSDC,
+		AmountFormatted: fmt.Sprintf("$%.2f USDC", dollars),
 	}, nil
+}
+
+// ConfirmPayment verifies the on-chain payment via Mirror Node and marks the member as paid
+func (s *Service) ConfirmPayment(ctx context.Context, leagueID, userID, transactionID string) error {
+	var walletAddress string
+	var entryFeeCents int64
+	var paymentStatus string
+
+	err := s.db.QueryRow(ctx, `
+		SELECT COALESCE(u.wallet_address, lm.wallet_address, ''), l.entry_fee_cents, lm.payment_status
+		FROM league_members lm
+		JOIN leagues l ON l.id = lm.league_id
+		JOIN platform_profiles pp ON pp.platform = lm.platform AND pp.platform_user_id = lm.platform_user_id
+		LEFT JOIN users u ON u.id = pp.user_id
+		WHERE lm.league_id = $1 AND pp.user_id = $2
+	`, leagueID, userID).Scan(&walletAddress, &entryFeeCents, &paymentStatus)
+
+	if err == pgx.ErrNoRows {
+		return ErrNotLeagueMember
+	}
+	if err != nil {
+		return fmt.Errorf("failed to fetch member info: %w", err)
+	}
+
+	if paymentStatus == "paid" {
+		return ErrAlreadyPaid
+	}
+
+	evmAddr, err := hederaAccountToEVM(walletAddress)
+	if err != nil {
+		return fmt.Errorf("invalid wallet address %q: %w", walletAddress, err)
+	}
+
+	leagueIdBytes, err := uuidToBytes32(leagueID)
+	if err != nil {
+		return fmt.Errorf("invalid league ID: %w", err)
+	}
+
+	contractEVM, err := hederaAccountToEVM(s.hederaEscrowContractID)
+	if err != nil {
+		return fmt.Errorf("invalid contract ID: %w", err)
+	}
+
+	callData := encodePaymentsCall(leagueIdBytes, evmAddr)
+
+	paid, err := s.readContractPayment(ctx, contractEVM, callData)
+	if err != nil {
+		return fmt.Errorf("failed to verify on-chain payment: %w", err)
+	}
+
+	// entry_fee_cents * 10_000 = required 6-decimal USDC amount
+	requiredUSDC := entryFeeCents * 10_000
+	if paid < requiredUSDC {
+		return ErrPaymentInsufficient
+	}
+
+	_, err = s.db.Exec(ctx, `
+		UPDATE league_members lm
+		SET payment_status = 'paid', transaction_hash = $3, paid_at = NOW(), updated_at = NOW()
+		FROM platform_profiles pp
+		WHERE lm.league_id = $1
+		  AND lm.platform = pp.platform
+		  AND lm.platform_user_id = pp.platform_user_id
+		  AND pp.user_id = $2
+	`, leagueID, userID, transactionID)
+	if err != nil {
+		return fmt.Errorf("failed to update payment status: %w", err)
+	}
+
+	return nil
+}
+
+// hederaAccountToEVM converts "0.0.NNNNN" to a 20-byte EVM address (shard.realm ignored, num in last 8 bytes)
+func hederaAccountToEVM(accountID string) ([20]byte, error) {
+	parts := strings.Split(accountID, ".")
+	if len(parts) != 3 {
+		return [20]byte{}, fmt.Errorf("expected format 0.0.NNNNN, got %q", accountID)
+	}
+	var num uint64
+	_, err := fmt.Sscanf(parts[2], "%d", &num)
+	if err != nil {
+		return [20]byte{}, fmt.Errorf("invalid account number %q: %w", parts[2], err)
+	}
+	var addr [20]byte
+	binary.BigEndian.PutUint64(addr[12:], num)
+	return addr, nil
+}
+
+// uuidToBytes32 converts a UUID string to a 32-byte array (UUID bytes left-aligned, right-padded with zeros)
+func uuidToBytes32(uuidStr string) ([32]byte, error) {
+	hexStr := strings.ReplaceAll(uuidStr, "-", "")
+	if len(hexStr) != 32 {
+		return [32]byte{}, fmt.Errorf("expected 32-char UUID hex, got %d chars from %q", len(hexStr), uuidStr)
+	}
+	uuidBytes, err := hex.DecodeString(hexStr)
+	if err != nil {
+		return [32]byte{}, fmt.Errorf("failed to decode UUID hex: %w", err)
+	}
+	var result [32]byte
+	copy(result[:], uuidBytes) // 16 bytes left-aligned, remaining 16 bytes are zero
+	return result, nil
+}
+
+// encodePaymentsCall ABI-encodes a call to payments(bytes32,address)
+func encodePaymentsCall(leagueId [32]byte, member [20]byte) []byte {
+	// Function selector: keccak256("payments(bytes32,address)")[0:4]
+	h := sha3.NewLegacyKeccak256()
+	h.Write([]byte("payments(bytes32,address)"))
+	selector := h.Sum(nil)[:4]
+
+	// ABI encode: bytes32 (32 bytes as-is) + address (20 bytes, left-padded to 32)
+	var addrPadded [32]byte
+	copy(addrPadded[12:], member[:])
+
+	callData := make([]byte, 0, 68)
+	callData = append(callData, selector...)
+	callData = append(callData, leagueId[:]...)
+	callData = append(callData, addrPadded[:]...)
+	return callData
+}
+
+// readContractPayment calls the Mirror Node to read payments(bytes32,address) from the escrow contract
+func (s *Service) readContractPayment(ctx context.Context, contractAddr [20]byte, callData []byte) (int64, error) {
+	mirrorNodeURL := fmt.Sprintf("https://%s.mirrornode.hedera.com", s.hederaNetwork)
+
+	type contractCallReq struct {
+		Block    string `json:"block"`
+		Data     string `json:"data"`
+		To       string `json:"to"`
+		Estimate bool   `json:"estimate"`
+	}
+
+	reqBody := contractCallReq{
+		Block:    "latest",
+		Data:     "0x" + hex.EncodeToString(callData),
+		To:       "0x" + hex.EncodeToString(contractAddr[:]),
+		Estimate: false,
+	}
+
+	reqJSON, err := json.Marshal(reqBody)
+	if err != nil {
+		return 0, err
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		mirrorNodeURL+"/api/v1/contracts/call",
+		bytes.NewReader(reqJSON),
+	)
+	if err != nil {
+		return 0, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return 0, fmt.Errorf("mirror node request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("mirror node returned %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		Result string `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("failed to decode mirror node response: %w", err)
+	}
+
+	// Result is ABI-encoded uint256: "0x" + 64 hex chars (32 bytes big-endian)
+	hexResult := strings.TrimPrefix(result.Result, "0x")
+	if len(hexResult) < 64 {
+		return 0, fmt.Errorf("unexpected result length from mirror node: %q", result.Result)
+	}
+	// Take last 64 hex chars (32 bytes)
+	hexResult = hexResult[len(hexResult)-64:]
+
+	resultBytes, err := hex.DecodeString(hexResult)
+	if err != nil {
+		return 0, fmt.Errorf("failed to decode result hex: %w", err)
+	}
+
+	// Parse last 8 bytes as uint64 (amounts fit well within int64 for any reasonable entry fee)
+	amount := int64(binary.BigEndian.Uint64(resultBytes[24:]))
+	return amount, nil
 }
 
 // GetPaymentStatus returns the full member list for a league, gated to league members only

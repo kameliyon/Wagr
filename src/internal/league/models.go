@@ -81,6 +81,8 @@ type ImportLeagueResponse struct {
 
 var ErrNotCommissioner = errors.New("user is not commissioner of this league")
 var ErrNotLeagueMember = errors.New("user is not a member of this league")
+var ErrAlreadyPaid = errors.New("entry fee already paid")
+var ErrPaymentInsufficient = errors.New("on-chain payment amount is less than required entry fee")
 
 // SetPaymentTokenRequest is the request payload for selecting a payment token
 type SetPaymentTokenRequest struct {
@@ -96,6 +98,19 @@ type PayStubResponse struct {
 	RecipientNote   string `json:"recipient_note"`
 	USDCTokenID     string `json:"usdc_token_id,omitempty"`
 	Message         string `json:"message"`
+}
+
+// PaymentInstructions is returned by InitiatePayment for USDC escrow payments
+type PaymentInstructions struct {
+	ContractID      string `json:"contract_id"`       // Hedera contract ID, e.g. "0.0.5555555"
+	USDCTokenID     string `json:"usdc_token_id"`     // Hedera token ID, e.g. "0.0.456858"
+	AmountUSDC      int64  `json:"amount_usdc"`       // 6-decimal units (entry_fee_cents * 10_000)
+	AmountFormatted string `json:"amount_formatted"`  // e.g. "$50.00 USDC"
+}
+
+// ConfirmPaymentRequest is the body for POST /{leagueId}/confirm-payment
+type ConfirmPaymentRequest struct {
+	TransactionID string `json:"transaction_id"`
 }
 
 // BonusCriteria holds type-specific parameters for weekly bonus entries.

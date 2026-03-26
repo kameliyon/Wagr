@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useWallet } from '../hooks/useWallet'
-import type { LeagueDetail, LeagueSettings, LeagueMember, PaymentToken, PayStubResponse } from '../types/league'
+import { HederaStrategy } from '../strategies/HederaStrategy'
+import type { LeagueDetail, LeagueSettings, LeagueMember, PaymentToken, PaymentInstructions } from '../types/league'
 import './LeagueOverview.css'
 
 const formatDollars = (cents: number) =>
@@ -41,7 +42,7 @@ function TokenBadge({ token }: { token: PaymentToken | null }) {
 
 export default function LeagueOverview() {
   const { leagueId } = useParams<{ leagueId: string }>()
-  const { isAuthenticated, token, user } = useWallet()
+  const { isAuthenticated, token, user, walletState, activeStrategy } = useWallet()
   const navigate = useNavigate()
 
   const [detail, setDetail] = useState<LeagueDetail | null>(null)
@@ -52,10 +53,9 @@ export default function LeagueOverview() {
   const [copied, setCopied] = useState(false)
 
   // Payment panel state
-  const [payMessage, setPayMessage] = useState<string | null>(null)
+  const [payStage, setPayStage] = useState<string | null>(null)
   const [payError, setPayError] = useState<string | null>(null)
   const [payLoading, setPayLoading] = useState(false)
-  const [tokenLoading, setTokenLoading] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated) navigate('/')
@@ -99,54 +99,87 @@ export default function LeagueOverview() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // Select payment token — persists to DB immediately
-  const handleSelectToken = async (selectedToken: PaymentToken) => {
-    if (!token || !leagueId) return
-    setTokenLoading(true)
+  const handlePay = async () => {
+    if (!token || !leagueId || !walletState || !activeStrategy) return
+    if (!(activeStrategy instanceof HederaStrategy)) {
+      setPayError('Only Hedera wallets are supported for USDC payments')
+      return
+    }
+
+    setPayLoading(true)
+    setPayStage(null)
     setPayError(null)
+
     try {
-      const res = await fetch(`/api/leagues/${leagueId}/payment-token`, {
+      // Step 1: Get payment instructions from backend
+      setPayStage('Fetching payment details…')
+      const payRes = await fetch(`/api/leagues/${leagueId}/pay`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (payRes.status === 409) {
+        throw new Error('Entry fee already paid')
+      }
+      if (!payRes.ok) {
+        const msg = await payRes.text()
+        throw new Error(msg || `Failed to initiate payment (${payRes.status})`)
+      }
+      const instructions = await payRes.json() as PaymentInstructions
+
+      // Step 2: Approve USDC allowance in HashPack
+      setPayStage(`Approving ${instructions.amount_formatted} in HashPack…`)
+      let transactionId: string
+      try {
+        const result = await activeStrategy.payEntryFeeUSDC({
+          leagueId,
+          amountUSDC: instructions.amount_usdc,
+          contractId: instructions.contract_id,
+          usdcTokenId: instructions.usdc_token_id,
+          walletState,
+        })
+        transactionId = result.transactionId
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (msg.toLowerCase().includes('reject') || msg.toLowerCase().includes('cancel')) {
+          throw new Error('Transaction rejected in HashPack')
+        }
+        throw new Error(`HashPack transaction failed: ${msg}`)
+      }
+
+      // Step 3: Confirm payment with backend
+      setPayStage('Confirming payment on-chain…')
+      const confirmRes = await fetch(`/api/leagues/${leagueId}/confirm-payment`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: selectedToken }),
+        body: JSON.stringify({ transaction_id: transactionId }),
       })
-      if (!res.ok) throw new Error(`Failed to set token (${res.status})`)
-      // Update local state so badge refreshes without full reload
+      if (confirmRes.status === 402) {
+        throw new Error('On-chain payment not found or insufficient — please try again in a few seconds')
+      }
+      if (confirmRes.status === 409) {
+        throw new Error('Payment already confirmed')
+      }
+      if (!confirmRes.ok) {
+        const msg = await confirmRes.text()
+        throw new Error(msg || `Confirmation failed (${confirmRes.status})`)
+      }
+
+      // Update local member state to paid
       setDetail((prev) => {
         if (!prev) return prev
         return {
           ...prev,
           members: prev.members.map((m) =>
-            m.user_id === user?.id ? { ...m, payment_token: selectedToken } : m
+            m.user_id === user?.id
+              ? { ...m, payment_status: 'paid' as const, transaction_hash: transactionId }
+              : m,
           ),
         }
       })
-    } catch (err) {
-      setPayError(err instanceof Error ? err.message : 'Failed to set token')
-    } finally {
-      setTokenLoading(false)
-    }
-  }
-
-  const handlePay = async () => {
-    if (!token || !leagueId) return
-    setPayLoading(true)
-    setPayMessage(null)
-    setPayError(null)
-    try {
-      const res = await fetch(`/api/leagues/${leagueId}/pay`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (!res.ok) {
-        const msg = await res.text()
-        throw new Error(msg || `Error ${res.status}`)
-      }
-      const stub = await res.json() as PayStubResponse
-      console.log('[WAGR Payment Stub]', stub)
-      setPayMessage(stub.message)
+      setPayStage(null)
     } catch (err) {
       setPayError(err instanceof Error ? err.message : 'Payment failed')
+      setPayStage(null)
     } finally {
       setPayLoading(false)
     }
@@ -322,45 +355,19 @@ export default function LeagueOverview() {
               {!myMember.wallet_address && (
                 <p className="payment-warning">Connect your wallet to enable payment.</p>
               )}
-              <div className="token-toggle">
-                <span className="token-toggle-label">Pay with:</span>
-                <button
-                  className={`token-toggle-btn${myMember.payment_token === 'hbar' ? ' token-toggle-btn--active' : ''}`}
-                  onClick={() => handleSelectToken('hbar')}
-                  disabled={tokenLoading}
-                >
-                  HBAR
-                </button>
-                <button
-                  className={`token-toggle-btn token-toggle-btn--usdc${myMember.payment_token === 'usdc' ? ' token-toggle-btn--active' : ''}`}
-                  onClick={() => handleSelectToken('usdc')}
-                  disabled={tokenLoading}
-                >
-                  USDC
-                </button>
-              </div>
 
               <div className="payment-amount">
-                {myMember.payment_token === 'usdc' && (
-                  <span>{formatDollars(settings.entry_fee_cents)} USDC</span>
-                )}
-                {myMember.payment_token === 'hbar' && (
-                  <span>~[TBD] HBAR ({formatDollars(settings.entry_fee_cents)} equivalent)</span>
-                )}
-                {!myMember.payment_token && (
-                  <span className="payment-amount--placeholder">Select a token above</span>
-                )}
+                <span>{formatDollars(settings.entry_fee_cents)} USDC</span>
               </div>
 
               <button
                 className="btn-primary payment-btn"
                 onClick={handlePay}
-                disabled={payLoading || !myMember.payment_token || !myMember.wallet_address}
+                disabled={payLoading || !myMember.wallet_address}
               >
-                {payLoading ? 'Processing…' : 'Pay Entry Fee'}
+                {payLoading ? (payStage ?? 'Processing…') : 'Pay Entry Fee'}
               </button>
 
-              {payMessage && <p className="payment-message">{payMessage}</p>}
               {payError && <p className="payment-error">{payError}</p>}
             </>
           )}

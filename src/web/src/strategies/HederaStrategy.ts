@@ -311,6 +311,84 @@ export class HederaStrategy implements WalletStrategy {
         return { transactionId: mockTxId, status: 'stub' }
     }
 
+    /**
+     * Pay a USDC entry fee via the LeagueEscrow smart contract.
+     *
+     * Two-step flow signed in HashPack:
+     *   1. AccountAllowanceApproveTransaction — approve contract to spend USDC
+     *   2. ContractExecuteTransaction — call payEntryFee(bytes32 leagueId, uint256 amount)
+     *
+     * @returns The Hedera transaction ID of the contract call
+     */
+    async payEntryFeeUSDC(params: {
+        leagueId: string      // WAGR league UUID
+        amountUSDC: number    // 6-decimal USDC units (e.g. $50.00 = 50_000_000)
+        contractId: string    // Hedera contract ID, e.g. "0.0.12345"
+        usdcTokenId: string   // Hedera token ID, e.g. "0.0.456858"
+        walletState: WalletState
+    }): Promise<{ transactionId: string }> {
+        if (!this.connector) {
+            throw new Error('Wallet not connected. Call connect() first.')
+        }
+
+        const { leagueId, amountUSDC, contractId, usdcTokenId, walletState } = params
+
+        if (!walletState.accountId) {
+            throw new Error('Account ID not found in wallet state')
+        }
+
+        const {
+            AccountAllowanceApproveTransaction,
+            ContractExecuteTransaction,
+            ContractFunctionParameters,
+            AccountId,
+            TokenId,
+            ContractId,
+        } = await import('@hashgraph/sdk')
+
+        const signers = (this.connector as any).signers
+        if (!signers || signers.length === 0) {
+            throw new Error('No WalletConnect signer available. Is HashPack connected?')
+        }
+        const signer = signers[0]
+
+        // Convert UUID to bytes32: remove dashes → 32 hex chars (16 bytes), right-pad with zeros to 32 bytes
+        const leagueIdHex = leagueId.replace(/-/g, '').padEnd(64, '0')
+        const leagueIdBytes32 = new Uint8Array(32)
+        for (let i = 0; i < 32; i++) {
+            leagueIdBytes32[i] = parseInt(leagueIdHex.substring(i * 2, i * 2 + 2), 16)
+        }
+
+        // Step 1: Approve the escrow contract to spend USDC from the user's account
+        const approveTx = await new AccountAllowanceApproveTransaction()
+            .approveTokenAllowance(
+                TokenId.fromString(usdcTokenId),
+                AccountId.fromString(walletState.accountId),
+                AccountId.fromString(contractId),
+                amountUSDC,
+            )
+            .freezeWithSigner(signer)
+
+        await approveTx.executeWithSigner(signer)
+
+        // Step 2: Call payEntryFee on the escrow contract
+        const contractCallTx = await new ContractExecuteTransaction()
+            .setContractId(ContractId.fromString(contractId))
+            .setGas(150_000)
+            .setFunction(
+                'payEntryFee',
+                new ContractFunctionParameters()
+                    .addBytes32(leagueIdBytes32)
+                    .addUint256(amountUSDC),
+            )
+            .freezeWithSigner(signer)
+
+        const response = await contractCallTx.executeWithSigner(signer)
+
+        const transactionId = response.transactionId?.toString() ?? String(response)
+        return { transactionId }
+    }
+
     getDefaultNetwork(): string {
         return HEDERA_DEFAULT_NETWORK
     }
