@@ -1,0 +1,12 @@
+{
+  "name": "wagr-contracts",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "deploy": "node scripts/deploy.mjs"
+  },
+  "dependencies": {
+    "@hashgraph/sdk": "^2.80.0",
+    "solc": "^0.8.26"
+  }
+}

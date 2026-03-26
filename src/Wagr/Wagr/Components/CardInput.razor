@@ -1,8 +1,0 @@
-﻿<MudTextField @bind-Value="CardNumber"
-    InputMode="InputMode.tel"
-    Validation="@(new Func<string,IEnumerable<string>>(RunRules))"
-    Immediate="true"
-    label="Card Number"
-    Variant="Variant.Text"
-    Mask="@(new PatternMask("0000 0000 0000 0000"))"
-/>

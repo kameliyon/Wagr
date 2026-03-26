@@ -242,3 +242,7 @@ paket-files/
 .idea/
 *.sln.iml
 /src/Plutus/Plutus/wwwroot/temp
+
+# Environment variables (contains API keys)
+.env
+src/web/dist

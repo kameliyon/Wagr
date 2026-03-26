@@ -1,0 +1,148 @@
+/* ── PlaceSelect — custom dropdown to match glassmorphism UI ── */
+
+.place-select {
+  position: relative;
+  display: inline-block;
+  width: 180px;
+}
+
+/* ── Trigger button ───────────────────────────────────────── */
+
+.place-select__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.45rem 0.7rem;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 400;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+
+.place-select__trigger:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.place-select--open .place-select__trigger {
+  border-color: rgba(124, 58, 237, 0.6);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.place-select__value {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.place-select__chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.2s ease, color 0.15s ease;
+}
+
+.place-select--open .place-select__chevron {
+  transform: rotate(180deg);
+  color: var(--accent-light);
+}
+
+/* ── Dropdown panel ───────────────────────────────────────── */
+
+.place-select__dropdown {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  z-index: 9999;
+  width: 100%;
+  padding: 0.3rem;
+  background: rgba(10, 14, 28, 0.98);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  border-radius: 10px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 0 24px rgba(124, 58, 237, 0.12);
+
+  display: none;
+  flex-direction: column;
+  gap: 1px;
+
+  transform-origin: top center;
+  animation: place-select-in 0.15s ease forwards;
+}
+
+.place-select--open .place-select__dropdown {
+  display: flex;
+}
+
+@keyframes place-select-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.92) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1) translateY(0);
+  }
+}
+
+/* ── Option items ─────────────────────────────────────────── */
+
+.place-select__option {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.38rem 0.6rem;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
+}
+
+.place-select__option:hover {
+  background: rgba(124, 58, 237, 0.14);
+  color: var(--text-primary);
+}
+
+.place-select__option--selected {
+  color: var(--accent-light);
+  font-weight: 500;
+}
+
+.place-select__option--selected:hover {
+  background: rgba(124, 58, 237, 0.2);
+}
+
+.place-select__check {
+  flex-shrink: 0;
+  color: var(--accent-light);
+}
+
+/* push label right so non-selected options align with selected (check icon space) */
+.place-select__option:not(.place-select__option--selected) span {
+  margin-left: 18px;
+}

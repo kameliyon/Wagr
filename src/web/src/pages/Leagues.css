@@ -1,0 +1,240 @@
+.leagues-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.leagues-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.leagues-header h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.leagues-status {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.leagues-error {
+  color: var(--error);
+  font-size: 0.9rem;
+}
+
+/* ── Empty state ──────────────────────────────────────────── */
+
+.empty-state {
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 16px;
+  padding: 4rem 2rem;
+  text-align: center;
+}
+
+.empty-state p {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 500;
+  margin-bottom: 0.4rem;
+}
+
+.empty-hint {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+/* ── League grid ──────────────────────────────────────────── */
+
+.leagues-list {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+
+.league-card {
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 16px;
+  padding: 1.5rem;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
+}
+
+.league-card:hover {
+  border-color: var(--glass-border-accent);
+  box-shadow: var(--glass-shadow), var(--glass-glow);
+  transform: translateY(-2px);
+}
+
+.league-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.league-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* ── Badges ───────────────────────────────────────────────── */
+
+.platform-badge {
+  flex-shrink: 0;
+  background: var(--accent-gradient);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  box-shadow: 0 0 10px rgba(124, 58, 237, 0.4);
+}
+
+.commissioner-badge {
+  flex-shrink: 0;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: var(--success);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+}
+
+/* ── Stats ────────────────────────────────────────────────── */
+
+.league-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+}
+
+.league-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.stat-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 600;
+}
+
+.stat-value {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.status-pre_draft,
+.status-drafting {
+  color: var(--warning);
+}
+
+.status-in_season {
+  color: var(--success);
+}
+
+.status-complete {
+  color: var(--text-muted);
+}
+
+/* ── Card footer ──────────────────────────────────────────── */
+
+.league-card-footer {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.btn-view {
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.4rem 0.9rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-family: inherit;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-view:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.btn-settings {
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.4rem 0.9rem;
+  border-radius: 8px;
+  background: rgba(124, 58, 237, 0.12);
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  color: var(--accent-light);
+  text-decoration: none;
+  font-family: inherit;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-settings:hover {
+  background: rgba(124, 58, 237, 0.22);
+  box-shadow: 0 0 14px rgba(124, 58, 237, 0.3);
+}
+
+.btn-remove-league {
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.4rem 0.9rem;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.28);
+  color: var(--error);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-remove-league:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.18);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
+}
+
+.btn-remove-league--confirm {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.btn-remove-league:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
