@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "hts-system-contract@hedera-skills": true
+  }
+}
