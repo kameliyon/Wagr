@@ -15,6 +15,7 @@ const {
   FileCreateTransaction,
   FileAppendTransaction,
   ContractCreateTransaction,
+  ContractFunctionParameters,
 } = await import('@hashgraph/sdk')
 
 // --- Env ---
@@ -57,13 +58,16 @@ if (output.errors) {
 const contract = output.contracts['LeagueEscrow.sol']['LeagueEscrow']
 const bytecodeHex = contract.evm.bytecode.object
 
-// --- ABI-encode constructor arg: address (20 bytes, left-padded to 32 bytes) ---
-const addrHex = usdcEvmAddress.replace(/^0x/, '').toLowerCase().padStart(64, '0')
-const fullBytecode = Buffer.from(bytecodeHex + addrHex, 'hex')
+// Hedera ContractCreateTransaction expects the file to contain the hex string (UTF-8), not raw binary
+const fullBytecode = Buffer.from(bytecodeHex, 'utf8')
 
 // --- Deploy ---
 const client = network === 'mainnet' ? Client.forMainnet() : Client.forTestnet()
-client.setOperator(AccountId.fromString(operatorId), PrivateKey.fromString(operatorKey))
+// DER-encoded keys start with '30' in hex; raw hex keys need explicit type
+const parsedKey = operatorKey.toLowerCase().startsWith('30')
+  ? PrivateKey.fromStringDer(operatorKey)
+  : PrivateKey.fromStringECDSA(operatorKey)
+client.setOperator(AccountId.fromString(operatorId), parsedKey)
 
 console.log(`Deploying LeagueEscrow to Hedera ${network}...`)
 console.log(`USDC EVM address: ${usdcEvmAddress}`)
@@ -72,6 +76,7 @@ console.log(`Bytecode size: ${fullBytecode.length} bytes`)
 // Upload bytecode in chunks (Hedera max file content per tx = 4096 bytes)
 const CHUNK = 4096
 const fileCreateTx = await new FileCreateTransaction()
+  .setKeys([parsedKey])
   .setContents(fullBytecode.slice(0, CHUNK))
   .setMaxTransactionFee(new Hbar(2))
   .execute(client)
@@ -93,7 +98,8 @@ for (let offset = CHUNK; offset < fullBytecode.length; offset += CHUNK) {
 
 const contractTx = await new ContractCreateTransaction()
   .setBytecodeFileId(fileId)
-  .setGas(300_000)
+  .setConstructorParameters(new ContractFunctionParameters().addAddress(usdcEvmAddress))
+  .setGas(2_000_000)
   .setMaxTransactionFee(new Hbar(10))
   .execute(client)
 
