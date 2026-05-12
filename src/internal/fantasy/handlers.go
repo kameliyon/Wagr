@@ -21,6 +21,16 @@ func NewHandler(platformService *PlatformService) *Handler {
 	}
 }
 
+// RegisterRoutes registers all auth routes on the given router
+func (h *Handler) RegisterRoutes(r chi.Router) {
+	r.Get("/platforms", h.ListPlatforms)
+	r.Get("/{platform}/user/{identifier}", h.GetUser)
+	r.Get("/{platform}/user/{userId}/leagues", h.GetUserLeagues)
+	r.Get("/{platform}/league/{leagueId}", h.GetLeague)
+	r.Get("/{platform}/league/{leagueId}/members", h.GetLeagueMembers)
+	r.Get("/{platform}/league/{leagueId}/rosters", h.GetLeagueRosters)
+}
+
 // GetUser handles GET /{platform}/user/{identifier}
 func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
 	platform := PlatformType(chi.URLParam(r, "platform"))

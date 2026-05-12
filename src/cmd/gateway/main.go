@@ -65,14 +65,15 @@ func main() {
 
 	// Platform-agnostic fantasy routes (NEW)
 	fantasyHandlers := fantasy.NewHandler(platformService)
-	r.Route("/api/fantasy", func(r chi.Router) {
-		r.Get("/platforms", fantasyHandlers.ListPlatforms)
-		r.Get("/{platform}/user/{identifier}", fantasyHandlers.GetUser)
-		r.Get("/{platform}/user/{userId}/leagues", fantasyHandlers.GetUserLeagues)
-		r.Get("/{platform}/league/{leagueId}", fantasyHandlers.GetLeague)
-		r.Get("/{platform}/league/{leagueId}/members", fantasyHandlers.GetLeagueMembers)
-		r.Get("/{platform}/league/{leagueId}/rosters", fantasyHandlers.GetLeagueRosters)
-	})
+	r.Route("/api/fantasy", fantasyHandlers.RegisterRoutes) 
+	// func(r chi.Router) {
+	// 	r.Get("/platforms", fantasyHandlers.ListPlatforms)
+	// 	r.Get("/{platform}/user/{identifier}", fantasyHandlers.GetUser)
+	// 	r.Get("/{platform}/user/{userId}/leagues", fantasyHandlers.GetUserLeagues)
+	// 	r.Get("/{platform}/league/{leagueId}", fantasyHandlers.GetLeague)
+	// 	r.Get("/{platform}/league/{leagueId}/members", fantasyHandlers.GetLeagueMembers)
+	// 	r.Get("/{platform}/league/{leagueId}/rosters", fantasyHandlers.GetLeagueRosters)
+	// })
 
 	// League management routes (NEW - requires authentication)
 	hederaUSDCTokenID := os.Getenv("HEDERA_USDC_TOKEN_ID")
@@ -80,21 +81,24 @@ func main() {
 	hederaNetwork := os.Getenv("HEDERA_NETWORK")
 	leagueService := league.NewService(db.Pool, platformService, hederaUSDCTokenID, hederaEscrowContractID, hederaNetwork)
 	leagueHandlers := league.NewHandler(leagueService)
-	r.Route("/api/leagues", func(r chi.Router) {
-		r.Use(authHandlers.AuthMiddleware)
-		r.Post("/link-platform", leagueHandlers.LinkPlatform)
-		r.Post("/import", leagueHandlers.ImportLeague)
-		r.Get("/", leagueHandlers.GetUserLeagues)
-		r.Get("/{leagueId}", leagueHandlers.GetLeague)
-		r.Delete("/{leagueId}", leagueHandlers.DeleteLeague)
-		r.Get("/{leagueId}/settings", leagueHandlers.GetLeagueSettings)
-		r.Put("/{leagueId}/settings", leagueHandlers.UpdateLeagueSettings)
-		r.Post("/{leagueId}/payment-token", leagueHandlers.SetPaymentToken)
-		r.Post("/{leagueId}/pay", leagueHandlers.InitiatePayment)
-		r.Post("/{leagueId}/confirm-payment", leagueHandlers.ConfirmPayment)
-		r.Get("/{leagueId}/payment-status", leagueHandlers.GetPaymentStatus)
-		r.Post("/{leagueId}/oracle/week-results", leagueHandlers.OracleWeekResults)
+	r.Route("/api/leagues", func(r chi.Router){
+		leagueHandlers.RegisterRoutes(r, *authHandlers)
 	})
+	// 	, func(r chi.Router) {
+	// 	r.Use(authHandlers.AuthMiddleware)
+	// 	r.Post("/link-platform", leagueHandlers.LinkPlatform)
+	// 	r.Post("/import", leagueHandlers.ImportLeague)
+	// 	r.Get("/", leagueHandlers.GetUserLeagues)
+	// 	r.Get("/{leagueId}", leagueHandlers.GetLeague)
+	// 	r.Delete("/{leagueId}", leagueHandlers.DeleteLeague)
+	// 	r.Get("/{leagueId}/settings", leagueHandlers.GetLeagueSettings)
+	// 	r.Put("/{leagueId}/settings", leagueHandlers.UpdateLeagueSettings)
+	// 	r.Post("/{leagueId}/payment-token", leagueHandlers.SetPaymentToken)
+	// 	r.Post("/{leagueId}/pay", leagueHandlers.InitiatePayment)
+	// 	r.Post("/{leagueId}/confirm-payment", leagueHandlers.ConfirmPayment)
+	// 	r.Get("/{leagueId}/payment-status", leagueHandlers.GetPaymentStatus)
+	// 	r.Post("/{leagueId}/oracle/week-results", leagueHandlers.OracleWeekResults)
+	// })
 
 	// Health check
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {

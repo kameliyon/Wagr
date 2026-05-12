@@ -23,6 +23,22 @@ func NewHandler(service *Service) *Handler {
 	}
 }
 
+func (h *Handler) RegisterRoutes(r chi.Router, auth auth.Handlers) {
+		r.Use(auth.AuthMiddleware)
+		r.Post("/link-platform", h.LinkPlatform)
+		r.Post("/import", h.ImportLeague)
+		r.Get("/", h.GetUserLeagues)
+		r.Get("/{leagueId}", h.GetLeague)
+		r.Delete("/{leagueId}", h.DeleteLeague)
+		r.Get("/{leagueId}/settings", h.GetLeagueSettings)
+		r.Put("/{leagueId}/settings", h.UpdateLeagueSettings)
+		r.Post("/{leagueId}/payment-token", h.SetPaymentToken)
+		r.Post("/{leagueId}/pay", h.InitiatePayment)
+		r.Post("/{leagueId}/confirm-payment", h.ConfirmPayment)
+		r.Get("/{leagueId}/payment-status", h.GetPaymentStatus)
+		r.Post("/{leagueId}/oracle/week-results", h.OracleWeekResults)
+}
+
 // LinkPlatform handles POST /link-platform (requires authentication)
 func (h *Handler) LinkPlatform(w http.ResponseWriter, r *http.Request) {
 	// Get authenticated user from context
