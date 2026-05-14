@@ -2,17 +2,22 @@ package auth
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"math/big"
+	"strings"
+
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"time"
 
-	"github.com/btcsuite/btcd/btcec/v2"
-	"github.com/btcsuite/btcd/btcec/v2/ecdsa"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -28,6 +33,18 @@ var (
 type Service struct {
 	db        *pgxpool.Pool
 	jwtSecret []byte
+}
+
+type HederaKeyResponse struct {
+	Key struct {
+		Key string `json:"key"`
+		Type string `json:"_type"`
+	} `json:"key"`
+}
+
+type HederaKeyInfo struct {
+	PublicKeyHex string
+	KeyType string
 }
 
 // NewService creates a new auth service
@@ -84,10 +101,10 @@ func (s *Service) GetOrCreateNonce(ctx context.Context, walletAddress, walletTyp
 // VerifySignature verifies the wallet signature and returns a JWT if valid
 func (s *Service) VerifySignature(ctx context.Context, req *VerifyRequest) (*AuthResponse, error) {
 	// Default to 'hedera'
-	walletType := req.WalletType
-	if walletType == "" {
-		walletType = "hedera"
-	}
+	// walletType := req.WalletType
+	// if walletType == "" {
+	walletType := "hedera"
+	// }
 
 	// Validate wallet type
 	if walletType != "hedera" {
@@ -109,10 +126,12 @@ func (s *Service) VerifySignature(ctx context.Context, req *VerifyRequest) (*Aut
 	}
 
 	// Verify the signature
-	message := fmt.Sprintf("Sign this message to authenticate with WAGR:\n\nNonce: %s", user.Nonce)
-	valid, err := verifyHederaSignature(req.PublicKey, message, req.Signature, req.KeyType)
+	// message := fmt.Sprintf("Sign this message to authenticate with WAGR:\n\nNonce: %s", user.Nonce)
+
+	valid, err := verifyHederaSignature(req.Message, req.Signature, req.WalletAddress)
 
 	if err != nil || !valid {
+		fmt.Printf("verify sig is: %t\n", valid)
 		return nil, ErrInvalidSignature
 	}
 
@@ -209,78 +228,123 @@ func generateNonce() (string, error) {
 
 // verifyHederaSignature verifies a signature from a Hedera wallet
 // Hedera supports both Ed25519 and ECDSA (secp256k1) keys
-func verifyHederaSignature(publicKeyHex, message, signatureHex, keyType string) (bool, error) {
-	sigBytes, err := hex.DecodeString(signatureHex)
+func verifyHederaSignature(message, signature, address string) (bool, error) {
+	keyInfo, err := getHederaPublicKey(address, false)
+	if err != nil {
+		return false, fmt.Errorf("error fetching public key: %w", err)
+	}
+
+	sigBytes, err := hex.DecodeString(signature)
 	if err != nil {
 		return false, fmt.Errorf("invalid signature hex: %w", err)
 	}
 
-	pubKeyBytes, err := hex.DecodeString(publicKeyHex)
-	if err != nil {
-		return false, fmt.Errorf("invalid public key hex: %w", err)
-	}
-
+	sigBytes = normalizeSignature(sigBytes)
+	
 	// Use key type from Mirror Node if provided
-	switch keyType {
+	switch keyInfo.KeyType {
 	case "ECDSA_SECP256K1":
-		return verifyECDSASignature(pubKeyBytes, message, sigBytes)
+		return verifyECDSASignature(keyInfo.PublicKeyHex, message, sigBytes)
 
 	case "ED25519":
-		if len(pubKeyBytes) != ed25519.PublicKeySize {
-			return false, fmt.Errorf("invalid Ed25519 public key length: expected %d, got %d", ed25519.PublicKeySize, len(pubKeyBytes))
-		}
-		if len(sigBytes) != ed25519.SignatureSize {
-			return false, fmt.Errorf("invalid Ed25519 signature length: expected %d, got %d", ed25519.SignatureSize, len(sigBytes))
-		}
-		// Hedera wallets sign messages with a prefix (similar to EIP-191)
-		// Format: \x19Hedera Signed Message:\n{length}{message}
-		messageBytes := []byte(message)
-		hederaMsg := fmt.Appendf(nil, "\x19Hedera Signed Message:\n%d%s", len(messageBytes), message)
-		return ed25519.Verify(pubKeyBytes, hederaMsg, sigBytes), nil
-
+		return verifyED25519(keyInfo.PublicKeyHex, message, sigBytes)
 	default:
-		// Infer from key/signature length as fallback
-		if len(sigBytes) == ed25519.SignatureSize && len(pubKeyBytes) == ed25519.PublicKeySize {
-			// Try Hedera prefix format first
-			messageBytes := []byte(message)
-			hederaMsg := fmt.Appendf(nil, "\x19Hedera Signed Message:\n%d%s", len(messageBytes), message)
-			if ed25519.Verify(pubKeyBytes, hederaMsg, sigBytes) {
-				return true, nil
-			}
-			// Fallback to raw message
-			return ed25519.Verify(pubKeyBytes, messageBytes, sigBytes), nil
-		}
-		// Assume ECDSA for non-64-byte signatures or non-32-byte keys
-		return verifyECDSASignature(pubKeyBytes, message, sigBytes)
+		return false, fmt.Errorf("unsupported key type: %s", keyInfo.KeyType)
 	}
 }
 
-// verifyECDSASignature verifies an ECDSA signature using secp256k1 curve
-func verifyECDSASignature(pubKeyBytes []byte, message string, sigBytes []byte) (bool, error) {
-	// Parse the public key using btcec (secp256k1)
-	pubKey, err := btcec.ParsePubKey(pubKeyBytes)
-	if err != nil {
-		return false, fmt.Errorf("failed to parse ECDSA public key: %w", err)
-	}
+// verifyECDSASignature verifies an ECDSA signature using secp256k1 curve.
+// Hedera ECDSA keys use keccak256 (Ethereum-compatible), not SHA-256.
+func verifyECDSASignature(pubKeyHex string, message string, sigBytes []byte) (bool, error) {
+	pubKeyBytes, err := hex.DecodeString(strings.TrimPrefix(pubKeyHex, "0x"))
+    if err != nil {
+        return false, fmt.Errorf("decoding public key: %w", err)
+    }
 
-	// Parse the signature - btcec can handle DER-encoded signatures directly
-	sig, err := ecdsa.ParseDERSignature(sigBytes)
-	if err != nil {
-		// Try parsing as raw R||S format (64 or 65 bytes)
-		if len(sigBytes) == 64 || len(sigBytes) == 65 {
-			r := new(btcec.ModNScalar)
-			r.SetByteSlice(sigBytes[:32])
-			s := new(btcec.ModNScalar)
-			s.SetByteSlice(sigBytes[32:64])
-			sig = ecdsa.NewSignature(r, s)
-		} else {
-			return false, fmt.Errorf("failed to parse ECDSA signature (len=%d): %w", len(sigBytes), err)
-		}
-	}
+    pubKey, err := crypto.DecompressPubkey(pubKeyBytes)
+    if err != nil {
+        return false, fmt.Errorf("parsing public key: %w", err)
+    }
 
-	// Hash the message
-	hash := sha256.Sum256([]byte(message))
+    prefix := fmt.Sprintf("\x19Hedera Signed Message:\n%d", len([]rune(string(message))))
+    prefixed := append([]byte(prefix), message...)
+    msgHash := crypto.Keccak256(prefixed)
 
-	// Verify the signature
-	return sig.Verify(hash[:], pubKey), nil
+    r := new(big.Int).SetBytes(sigBytes[:32])
+    s := new(big.Int).SetBytes(sigBytes[32:])
+
+    return ecdsa.Verify(pubKey, msgHash, r, s), nil
 }
+
+func verifyED25519(pubKeyHex string, message string, sigBytes []byte) (bool, error) {
+	pubKeyBytes, err := hex.DecodeString(strings.TrimPrefix(pubKeyHex, "0x"))
+	if err != nil {
+		return false, fmt.Errorf("error decoding public key: %w", err)
+	}
+
+	if len(pubKeyBytes) != 32 {
+		return false, fmt.Errorf("invalid ED25519 public key length: %d", len(pubKeyBytes))
+	}
+
+	if len(sigBytes) != 64 {
+		return false, fmt.Errorf("invalid ED25519 signature length: %d", len(sigBytes))
+	}
+
+	prefix := fmt.Sprintf("\x19Hedera Signed Message:\n%d", len([]rune(string(message))))
+	prefixed := append([]byte(prefix), message...)
+
+	pubKey := ed25519.PublicKey(pubKeyBytes)
+	return ed25519.Verify(pubKey, prefixed, sigBytes), nil
+}
+
+func getHederaPublicKey(accountId string, isMainnet bool) (HederaKeyInfo, error) {
+	baseURL := "https://testnet.mirrornode.hedera.com"
+	if isMainnet {
+		baseURL = "https://mainnet.mirrornode.hedera.com"
+	}
+
+	url := fmt.Sprintf("%s/api/v1/accounts/%s", baseURL, accountId)
+	fmt.Printf("Checking Mirror Node with this URL: %s", url)
+	resp, err := http.Get(url)
+	if err != nil {
+		return HederaKeyInfo{}, fmt.Errorf("mirror node request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return HederaKeyInfo{}, fmt.Errorf("reading mirror node response: %w", err)
+	}
+
+	var keyResp HederaKeyResponse 
+	if err := json.Unmarshal(body, &keyResp); err != nil {
+		return HederaKeyInfo{}, fmt.Errorf("parsing mirror node response error: %w", err)
+	}
+
+	if keyResp.Key.Type != "ECDSA_SECP256K1" && keyResp.Key.Type != "ED25519" {
+		return HederaKeyInfo{}, fmt.Errorf("account key type is %s", keyResp.Key.Type)
+	}
+
+	return HederaKeyInfo{
+		PublicKeyHex: keyResp.Key.Key,
+		KeyType: keyResp.Key.Type,
+	}, nil
+}
+
+func normalizeSignature(sigBytes []byte) []byte{
+	if len(sigBytes) == 65 {
+		sigBytes = sigBytes[:64]
+	}
+
+	r := sigBytes[:len(sigBytes)/2]
+	s := sigBytes[len(sigBytes)/2:]
+
+	rPad := make([]byte, 32)
+	sPad := make([]byte, 32)
+
+	copy(rPad[32-len(r):], r)
+	copy(sPad[32-len(s):], s)
+
+	return append(rPad, sPad...)
+}
+

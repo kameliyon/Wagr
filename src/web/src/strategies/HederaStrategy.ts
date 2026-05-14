@@ -3,6 +3,7 @@
 import type { WalletStrategy, WalletState, SignatureResult, TransferHBARParams, TransferHTSParams, PaymentResult } from '../types/wallet'
 import type { HederaNetworkId } from '../types/hedera'
 import { HEDERA_DEFAULT_NETWORK } from '../utils/walletConstants'
+import { proto } from '@hashgraph/proto'
 
 // Hedera Wallet Connect types
 interface DAppConnector {
@@ -166,6 +167,7 @@ export class HederaStrategy implements WalletStrategy {
             // Fetch the public key and key type from the Mirror Node API
             // This is the recommended and secure way to get the public key
             const { key: publicKey, keyType } = await this.fetchPublicKeyFromMirrorNode(accountId, networkString)
+            console.log("key type: " + keyType + ". \n public key: " + publicKey);
 
             return {
                 type: 'hedera',
@@ -212,74 +214,89 @@ export class HederaStrategy implements WalletStrategy {
         if (!this.connector) {
             throw new Error('Wallet not connected. Call connect() first.')
         }
-
+        
         if (!walletState.accountId) {
             throw new Error('Account ID not found in wallet state')
         }
-
+        
         try {
-            // Convert account ID to HIP-30 format: hedera:<network>:<accountId>
-            // e.g., "0.0.12345" -> "hedera:testnet:0.0.12345"
             const network = walletState.network || 'testnet'
             const signerAccountId = `hedera:${network}:${walletState.accountId}`
-
-            // Call signMessage with proper params
+            
             const result = await this.connector.signMessage({
                 signerAccountId,
                 message,
             })
-
+            
             if (!result || !result.signatureMap) {
                 throw new Error('No signature received from wallet')
             }
-
-            // Extract signature from signatureMap
+            
             let signatureHex: string
-
+            
             if (typeof result.signatureMap === 'string') {
-                // It's a base64-encoded protobuf SignaturePair
-                // Structure: 0x0a 0x20 [32-byte pubKeyPrefix] 0x1a 0x40 [64-byte signature]
-                const signatureBytes = this.base64ToUint8Array(result.signatureMap)
-
-                // Parse the protobuf to extract the signature
-                const extracted = this.extractSignatureFromProtobuf(signatureBytes)
-                if (extracted) {
-                    signatureHex = this.uint8ArrayToHex(extracted)
-                } else {
-                    // Fallback: use raw bytes (will likely fail verification)
-                    console.warn('Could not parse protobuf SignaturePair, using raw bytes')
-                    signatureHex = this.uint8ArrayToHex(signatureBytes)
+                const sigMapBytes = Uint8Array.from(atob(result.signatureMap), c => c.charCodeAt(0))
+                const sigMap = proto.SignatureMap.decode(sigMapBytes)
+                
+                const sigPair = sigMap.sigPair[0]
+                if (!sigPair) {
+                    throw new Error('No signature pair found in signature map')
                 }
+                
+                const sigPairAny = sigPair as any
+                const hasECDSA = sigPairAny.ECDSASecp256k1 && 
+                    Object.keys(sigPairAny.ECDSASecp256k1).length > 0
+
+                const hasED25519 = sigPairAny.ed25519 && 
+                    Object.keys(sigPairAny.ed25519).length > 0
+                
+                if (hasECDSA) {
+                    const rawObj = sigPairAny.ECDSASecp256k1
+                    const rawSignature = new Uint8Array(64)
+                    for (let i = 0; i < 64; i++) {
+                        rawSignature[i] = rawObj[i]
+                    }
+                    signatureHex = this.uint8ArrayToHex(rawSignature)
+                } else if (hasED25519) {
+                    const rawObj = sigPairAny.ed25519
+                    const rawSignature = new Uint8Array(64)
+                    for (let i = 0; i < 64; i++) {
+                        rawSignature[i] = rawObj[i]
+                    }
+                    signatureHex = this.uint8ArrayToHex(rawSignature)
+                } else {
+                    throw new Error('No supported signature type found in sigPair')
+                }
+                
             } else if (result.signatureMap.sigPair) {
-                // SignatureMap has sigPair array
                 const sigPair = Array.isArray(result.signatureMap.sigPair)
                     ? result.signatureMap.sigPair[0]
                     : result.signatureMap.sigPair
-
-                // Extract signature
-                if (sigPair.ed25519) {
-                    signatureHex = this.uint8ArrayToHex(sigPair.ed25519)
-                } else if (sigPair.ECDSASecp256k1) {
-                    signatureHex = this.uint8ArrayToHex(sigPair.ECDSASecp256k1)
+                
+                if (sigPair.ECDSASecp256k1) {
+                    signatureHex = this.uint8ArrayToHex(
+                        sigPair.ECDSASecp256k1 instanceof Uint8Array
+                            ? sigPair.ECDSASecp256k1
+                            : Uint8Array.from(Object.values(sigPair.ECDSASecp256k1))
+                    )
+                } else if (sigPair.ed25519) {
+                    signatureHex = this.uint8ArrayToHex(
+                        sigPair.ed25519 instanceof Uint8Array
+                            ? sigPair.ed25519
+                            : Uint8Array.from(Object.values(sigPair.ed25519))
+                    )
                 } else {
                     throw new Error('Unsupported signature type in signatureMap')
                 }
+                
             } else {
-                // Fallback: try to convert entire signatureMap
-                signatureHex = JSON.stringify(result.signatureMap)
+                throw new Error('Unrecognized signatureMap format')
             }
-
-            // Use the public key and key type from walletState (fetched from mirror node during connect)
-            const publicKey = walletState.publicKey
-            if (!publicKey) {
-                throw new Error('Public key not found in wallet state. Was the wallet connected properly?')
-            }
-
+            
             return {
                 signature: signatureHex,
-                publicKey,
-                keyType: walletState.keyType,
             }
+            
         } catch (err) {
             console.error('Error signing message with Hedera Wallet Connect:', err)
             throw err

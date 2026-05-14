@@ -14,7 +14,6 @@ export interface WalletState {
 
 export interface SignatureResult {
   signature: string
-  publicKey: string
   keyType?: string // 'ED25519' or 'ECDSA_SECP256K1'
 }
 

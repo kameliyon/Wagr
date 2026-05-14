@@ -29,10 +29,11 @@ type NonceResponse struct {
 // VerifyRequest is the request body for verifying a signature
 type VerifyRequest struct {
 	WalletAddress string `json:"wallet_address"`
-	WalletType    string `json:"wallet_type"` // e.g., 'hedera'
+	Message string `json:"message"`
 	Signature     string `json:"signature"`   // Hex-encoded signature
-	PublicKey     string `json:"public_key"`  // Hex-encoded public key
-	KeyType       string `json:"key_type"`    // 'ED25519' or 'ECDSA_SECP256K1'
+	// WalletType    string `json:"wallet_type"` // e.g., 'hedera'
+	// PublicKey     string `json:"public_key"`  // Hex-encoded public key
+	// KeyType       string `json:"key_type"`    // 'ED25519' or 'ECDSA_SECP256K1'
 }
 
 // AuthResponse is returned after successful authentication
