@@ -1,3 +1,4 @@
+-- +goose Up
 -- Migration 004: Platform-Agnostic Fantasy Sports Integration
 -- This migration transforms Sleeper-specific tables into platform-agnostic tables
 -- that can support Sleeper, ESPN, Yahoo, and any future fantasy platforms.
@@ -98,6 +99,7 @@ CREATE INDEX idx_platform_credentials_user_id ON platform_credentials(user_id);
 -- STEP 2: Migrate existing Sleeper data (if old tables exist)
 -- ============================================================================
 
+-- +goose StatementBegin
 -- Migrate sleeper_profiles to platform_profiles
 DO $$
 BEGIN
@@ -116,7 +118,9 @@ BEGIN
         ON CONFLICT (user_id, platform, platform_user_id) DO NOTHING;
     END IF;
 END $$;
+-- +goose StatementEnd
 
+-- +goose StatementBegin
 -- Migrate old leagues table to new leagues table (if old table exists with sleeper_league_id column)
 DO $$
 BEGIN
@@ -150,7 +154,9 @@ BEGIN
         ON CONFLICT (platform, platform_league_id) DO NOTHING;
     END IF;
 END $$;
+-- +goose StatementEnd
 
+-- +goose StatementBegin
 -- Migrate old league_members table (if it exists with old schema)
 DO $$
 BEGIN
@@ -186,22 +192,26 @@ BEGIN
         ON CONFLICT (league_id, platform_user_id) DO NOTHING;
     END IF;
 END $$;
+-- +goose StatementEnd
+
 
 -- ============================================================================
 -- STEP 3: Rename old sleeper_profiles table for rollback safety
 -- ============================================================================
-
+-- +goose StatementBegin
 DO $$
 BEGIN
     IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'sleeper_profiles') THEN
         ALTER TABLE sleeper_profiles RENAME TO sleeper_profiles_old;
     END IF;
 END $$;
+-- +goose StatementEnd
+
 
 -- ============================================================================
 -- STEP 4: Create updated_at trigger for new tables
 -- ============================================================================
-
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -209,31 +219,40 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
+-- +goose StatementBegin
 -- Drop triggers if they exist and recreate
 DROP TRIGGER IF EXISTS update_platform_profiles_updated_at ON platform_profiles;
 CREATE TRIGGER update_platform_profiles_updated_at
     BEFORE UPDATE ON platform_profiles
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+-- +goose StatementEnd
 
+-- +goose StatementBegin
 DROP TRIGGER IF EXISTS update_leagues_updated_at ON leagues;
 CREATE TRIGGER update_leagues_updated_at
     BEFORE UPDATE ON leagues
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+-- +goose StatementEnd
 
+-- +goose StatementBegin
 DROP TRIGGER IF EXISTS update_league_members_updated_at ON league_members;
 CREATE TRIGGER update_league_members_updated_at
     BEFORE UPDATE ON league_members
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+-- +goose StatementEnd
 
+-- +goose StatementBegin
 DROP TRIGGER IF EXISTS update_platform_credentials_updated_at ON platform_credentials;
 CREATE TRIGGER update_platform_credentials_updated_at
     BEFORE UPDATE ON platform_credentials
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+-- +goose StatementEnd
 
 -- ============================================================================
 -- STEP 5: Add comments for documentation

@@ -4,11 +4,13 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/joho/godotenv"
 
 	"wagr/src/internal/auth"
 	"wagr/src/internal/database"
@@ -18,8 +20,22 @@ import (
 )
 
 func main() {
+	// if envPath := findEnvFile(); envPath != "" {
+	// 	if err := godotenv.Overload(envPath); err == nil {
+	// 		log.Printf("Loaded environment from %s", envPath)
+	// 	}
+	// } else {
+	// 	log.Println("No .env file found, using environment variables")
+	// }
+
+	err := godotenv.Load("../.env")
+	if err != nil {
+		log.Printf("No .env file found, using environment variables")
+	}
+
 	// Initialize database
 	dbConfig := database.DefaultConfig()
+	log.Printf("Connecting to database at %s:%s", dbConfig.Host, dbConfig.Port)
 	db, err := database.New(dbConfig)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
@@ -66,14 +82,6 @@ func main() {
 	// Platform-agnostic fantasy routes (NEW)
 	fantasyHandlers := fantasy.NewHandler(platformService)
 	r.Route("/api/fantasy", fantasyHandlers.RegisterRoutes) 
-	// func(r chi.Router) {
-	// 	r.Get("/platforms", fantasyHandlers.ListPlatforms)
-	// 	r.Get("/{platform}/user/{identifier}", fantasyHandlers.GetUser)
-	// 	r.Get("/{platform}/user/{userId}/leagues", fantasyHandlers.GetUserLeagues)
-	// 	r.Get("/{platform}/league/{leagueId}", fantasyHandlers.GetLeague)
-	// 	r.Get("/{platform}/league/{leagueId}/members", fantasyHandlers.GetLeagueMembers)
-	// 	r.Get("/{platform}/league/{leagueId}/rosters", fantasyHandlers.GetLeagueRosters)
-	// })
 
 	// League management routes (NEW - requires authentication)
 	hederaUSDCTokenID := os.Getenv("HEDERA_USDC_TOKEN_ID")
@@ -84,21 +92,6 @@ func main() {
 	r.Route("/api/leagues", func(r chi.Router){
 		leagueHandlers.RegisterRoutes(r, *authHandlers)
 	})
-	// 	, func(r chi.Router) {
-	// 	r.Use(authHandlers.AuthMiddleware)
-	// 	r.Post("/link-platform", leagueHandlers.LinkPlatform)
-	// 	r.Post("/import", leagueHandlers.ImportLeague)
-	// 	r.Get("/", leagueHandlers.GetUserLeagues)
-	// 	r.Get("/{leagueId}", leagueHandlers.GetLeague)
-	// 	r.Delete("/{leagueId}", leagueHandlers.DeleteLeague)
-	// 	r.Get("/{leagueId}/settings", leagueHandlers.GetLeagueSettings)
-	// 	r.Put("/{leagueId}/settings", leagueHandlers.UpdateLeagueSettings)
-	// 	r.Post("/{leagueId}/payment-token", leagueHandlers.SetPaymentToken)
-	// 	r.Post("/{leagueId}/pay", leagueHandlers.InitiatePayment)
-	// 	r.Post("/{leagueId}/confirm-payment", leagueHandlers.ConfirmPayment)
-	// 	r.Get("/{leagueId}/payment-status", leagueHandlers.GetPaymentStatus)
-	// 	r.Post("/{leagueId}/oracle/week-results", leagueHandlers.OracleWeekResults)
-	// })
 
 	// Health check
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -112,5 +105,25 @@ func main() {
 	log.Println("  - /api/leagues/* (league management - authenticated)")
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		log.Fatal(err)
+	}
+}
+
+// findEnvFile walks up from the current directory to find a .env file
+// next to go.mod, so the app loads config regardless of which directory it's run from.
+func findEnvFile() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	for {
+		candidate := filepath.Join(dir, ".env")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
 	}
 }
