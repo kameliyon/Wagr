@@ -35,7 +35,7 @@ if (!usdcEvmAddress) {
 
 // --- Compile ---
 const solc = require('solc')
-const solPath = join(__dirname, '..', 'LeagueEscrow.sol')
+const solPath = join(__dirname, '..', 'src', 'LeagueEscrow.sol')
 const source = readFileSync(solPath, 'utf8')
 
 const input = {

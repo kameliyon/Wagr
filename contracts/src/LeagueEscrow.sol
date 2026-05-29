@@ -14,6 +14,10 @@ contract LeagueEscrow {
     address public immutable usdc;
     address public immutable owner;
 
+    // HTS precompile response codes (Hedera ResponseCodeEnum protobuf values)
+    int64 private constant RC_SUCCESS = 22;
+    int64 private constant RC_ALREADY_ASSOCIATED = 194;
+
     // leagueId => member EVM address => amount paid (6-decimal USDC)
     mapping(bytes32 => mapping(address => uint256)) public payments;
 
@@ -22,6 +26,7 @@ contract LeagueEscrow {
 
     event EntryFeePaid(bytes32 indexed leagueId, address indexed member, uint256 amount);
     event PayoutDistributed(bytes32 indexed leagueId, address indexed recipient, uint256 amount);
+    event RefundClaimed(bytes32 indexed leagueId, address indexed member, uint256 amount);
 
     constructor(address _usdc) {
         usdc = _usdc;
@@ -30,7 +35,7 @@ contract LeagueEscrow {
         // SUCCESS = 22, TOKEN_ALREADY_ASSOCIATED_TO_ACCOUNT = 194
         int64 rc = IHederaTokenService(0x0000000000000000000000000000000000000167)
             .associateToken(address(this), _usdc);
-        require(rc == 22 || rc == 194, "USDC association failed");
+        require(rc == RC_SUCCESS || rc == RC_ALREADY_ASSOCIATED, "USDC association failed");
     }
 
     modifier onlyOwner() {
@@ -46,6 +51,21 @@ contract LeagueEscrow {
         bool ok = IERC20(usdc).transferFrom(msg.sender, address(this), amount);
         require(ok, "USDC transfer failed");
         emit EntryFeePaid(leagueId, msg.sender, amount);
+    }
+
+    function claimRefund(bytes32 leagueId) external {
+        uint256 amount = payments[leagueId][msg.sender];
+        require(amount > 0, "nothing to refund");
+        // checks-effects-interactions: clear state before external calls
+        payments[leagueId][msg.sender] = 0;
+        leagueTotals[leagueId] -= amount;
+        // Associate member with USDC (idempotent on Hedera — safe even if already associated)
+        int64 rc = IHederaTokenService(0x0000000000000000000000000000000000000167)
+            .associateToken(msg.sender, usdc);
+        require(rc == RC_SUCCESS || rc == RC_ALREADY_ASSOCIATED, "USDC association failed");
+        bool ok = IERC20(usdc).transfer(msg.sender, amount);
+        require(ok, "refund transfer failed");
+        emit RefundClaimed(leagueId, msg.sender, amount);
     }
 
     function distributePayout(
@@ -70,7 +90,7 @@ contract LeagueEscrow {
             // SUCCESS = 22, TOKEN_ALREADY_ASSOCIATED_TO_ACCOUNT = 194
             int64 rc = IHederaTokenService(0x0000000000000000000000000000000000000167)
                 .associateToken(recipients[i], usdc);
-            require(rc == 22 || rc == 194, "recipient association failed");
+            require(rc == RC_SUCCESS || rc == RC_ALREADY_ASSOCIATED, "recipient association failed");
 
             bool ok = IERC20(usdc).transfer(recipients[i], amounts[i]);
             require(ok, "payout transfer failed");

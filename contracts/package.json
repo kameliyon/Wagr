@@ -3,10 +3,16 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "deploy": "node scripts/deploy.mjs"
+    "deploy": "node scripts/deploy.mjs",
+    "test": "hardhat test",
+    "compile": "hardhat compile"
   },
   "dependencies": {
     "@hashgraph/sdk": "^2.80.0",
     "solc": "^0.8.26"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.0"
   }
 }
