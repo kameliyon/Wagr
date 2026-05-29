@@ -376,6 +376,11 @@ export class HederaStrategy implements WalletStrategy {
             leagueIdBytes32[i] = parseInt(leagueIdHex.substring(i * 2, i * 2 + 2), 16)
         }
 
+        // hedera-wallet-connect v2 DAppSigner.populateTransaction() only sets the txId,
+        // not node account IDs. freezeWithSigner() calls freeze() which throws if no nodes
+        // are set. Nodes 0.0.3-0.0.5 are always available on testnet and mainnet.
+        const nodeAccountIds = [new AccountId(3), new AccountId(4), new AccountId(5)]
+
         // Step 1: Approve the escrow contract to spend USDC from the user's account
         const approveTx = await new AccountAllowanceApproveTransaction()
             .approveTokenAllowance(
@@ -384,6 +389,7 @@ export class HederaStrategy implements WalletStrategy {
                 AccountId.fromString(contractId),
                 amountUSDC,
             )
+            .setNodeAccountIds(nodeAccountIds)
             .freezeWithSigner(signer)
 
         await approveTx.executeWithSigner(signer)
@@ -398,6 +404,7 @@ export class HederaStrategy implements WalletStrategy {
                     .addBytes32(leagueIdBytes32)
                     .addUint256(amountUSDC),
             )
+            .setNodeAccountIds(nodeAccountIds)
             .freezeWithSigner(signer)
 
         const response = await contractCallTx.executeWithSigner(signer)

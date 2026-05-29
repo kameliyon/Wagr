@@ -606,7 +606,7 @@ func (s *Service) ConfirmPayment(ctx context.Context, leagueID, userID, transact
 		return ErrAlreadyPaid
 	}
 
-	evmAddr, err := hederaAccountToEVM(walletAddress)
+	evmAddr, err := s.getAccountEVMAddress(ctx, walletAddress)
 	if err != nil {
 		return fmt.Errorf("invalid wallet address %q: %w", walletAddress, err)
 	}
@@ -648,6 +648,42 @@ func (s *Service) ConfirmPayment(ctx context.Context, leagueID, userID, transact
 	}
 
 	return nil
+}
+
+// getAccountEVMAddress fetches the canonical EVM address for a Hedera account from the Mirror Node.
+// ECDSA (HashPack) accounts have a key-derived alias that differs from the long-zero format;
+// using the Mirror Node ensures msg.sender in contracts matches the lookup address.
+func (s *Service) getAccountEVMAddress(ctx context.Context, accountID string) ([20]byte, error) {
+	mirrorURL := fmt.Sprintf("https://%s.mirrornode.hedera.com/api/v1/accounts/%s", s.hederaNetwork, accountID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, mirrorURL, nil)
+	if err != nil {
+		return hederaAccountToEVM(accountID)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return hederaAccountToEVM(accountID)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return hederaAccountToEVM(accountID)
+	}
+	var result struct {
+		EvmAddress string `json:"evm_address"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || result.EvmAddress == "" {
+		return hederaAccountToEVM(accountID)
+	}
+	evmHex := strings.TrimPrefix(result.EvmAddress, "0x")
+	if len(evmHex) != 40 {
+		return hederaAccountToEVM(accountID)
+	}
+	addrBytes, err := hex.DecodeString(evmHex)
+	if err != nil {
+		return hederaAccountToEVM(accountID)
+	}
+	var addr [20]byte
+	copy(addr[:], addrBytes)
+	return addr, nil
 }
 
 // hederaAccountToEVM converts "0.0.NNNNN" to a 20-byte EVM address (shard.realm ignored, num in last 8 bytes)

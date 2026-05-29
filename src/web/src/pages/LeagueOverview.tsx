@@ -56,6 +56,12 @@ export default function LeagueOverview() {
   const [payStage, setPayStage] = useState<string | null>(null)
   const [payError, setPayError] = useState<string | null>(null)
   const [payLoading, setPayLoading] = useState(false)
+  // Persisted transaction ID for a submitted-but-not-yet-confirmed payment.
+  // Saved before confirmation so a page refresh doesn't lose it.
+  const pendingTxKey = leagueId ? `wagr_pending_tx_${leagueId}` : null
+  const [pendingTxId, setPendingTxId] = useState<string | null>(
+    () => (pendingTxKey ? localStorage.getItem(pendingTxKey) : null)
+  )
 
   useEffect(() => {
     if (!isAuthenticated) navigate('/')
@@ -99,8 +105,58 @@ export default function LeagueOverview() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // Polls confirm-payment with retries to tolerate Mirror Node indexing lag.
+  const confirmPaymentWithRetry = async (txId: string) => {
+    const MAX_ATTEMPTS = 8
+    const RETRY_MS = 5000
+    let res: Response | null = null
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      setPayStage(
+        attempt === 1
+          ? 'Waiting for on-chain confirmation…'
+          : `Confirming on-chain… (${attempt}/${MAX_ATTEMPTS})`
+      )
+      if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, RETRY_MS))
+      res = await fetch(`/api/leagues/${leagueId}/confirm-payment`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transaction_id: txId }),
+      })
+      if (res.status !== 402) break
+    }
+    if (!res) throw new Error('Confirmation failed')
+    if (res.status === 402) {
+      throw new Error('On-chain payment not found — it may still be propagating. Use "Confirm Existing Payment" to retry.')
+    }
+    if (res.status === 409) return // already confirmed — treat as success
+    if (!res.ok) {
+      const msg = await res.text()
+      throw new Error(msg || `Confirmation failed (${res.status})`)
+    }
+  }
+
+  const markLocalPaid = (txId: string) => {
+    if (pendingTxKey) localStorage.removeItem(pendingTxKey)
+    setPendingTxId(null)
+    setDetail((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        members: prev.members.map((m) =>
+          m.user_id === user?.id
+            ? { ...m, payment_status: 'paid' as const, transaction_hash: txId }
+            : m,
+        ),
+      }
+    })
+  }
+
   const handlePay = async () => {
-    if (!token || !leagueId || !walletState || !activeStrategy) return
+    if (!token || !leagueId) return
+    if (!walletState || !activeStrategy) {
+      setPayError('Wallet not connected. Please reconnect your wallet.')
+      return
+    }
     if (!(activeStrategy instanceof HederaStrategy)) {
       setPayError('Only Hedera wallets are supported for USDC payments')
       return
@@ -126,7 +182,7 @@ export default function LeagueOverview() {
       }
       const instructions = await payRes.json() as PaymentInstructions
 
-      // Step 2: Approve USDC allowance in HashPack
+      // Step 2: Send transaction via HashPack
       setPayStage(`Approving ${instructions.amount_formatted} in HashPack…`)
       let transactionId: string
       try {
@@ -146,39 +202,34 @@ export default function LeagueOverview() {
         throw new Error(`HashPack transaction failed: ${msg}`)
       }
 
-      // Step 3: Confirm payment with backend
-      setPayStage('Confirming payment on-chain…')
-      const confirmRes = await fetch(`/api/leagues/${leagueId}/confirm-payment`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transaction_id: transactionId }),
-      })
-      if (confirmRes.status === 402) {
-        throw new Error('On-chain payment not found or insufficient — please try again in a few seconds')
-      }
-      if (confirmRes.status === 409) {
-        throw new Error('Payment already confirmed')
-      }
-      if (!confirmRes.ok) {
-        const msg = await confirmRes.text()
-        throw new Error(msg || `Confirmation failed (${confirmRes.status})`)
-      }
+      // Persist before confirming — if the page reloads before confirmation succeeds
+      // the user can retry without re-sending the transaction.
+      if (pendingTxKey) localStorage.setItem(pendingTxKey, transactionId)
+      setPendingTxId(transactionId)
 
-      // Update local member state to paid
-      setDetail((prev) => {
-        if (!prev) return prev
-        return {
-          ...prev,
-          members: prev.members.map((m) =>
-            m.user_id === user?.id
-              ? { ...m, payment_status: 'paid' as const, transaction_hash: transactionId }
-              : m,
-          ),
-        }
-      })
+      // Step 3: Confirm with backend
+      await confirmPaymentWithRetry(transactionId)
+      markLocalPaid(transactionId)
       setPayStage(null)
     } catch (err) {
       setPayError(err instanceof Error ? err.message : 'Payment failed')
+      setPayStage(null)
+    } finally {
+      setPayLoading(false)
+    }
+  }
+
+  const handleRetryConfirm = async () => {
+    if (!token || !leagueId || !pendingTxId) return
+    setPayLoading(true)
+    setPayStage(null)
+    setPayError(null)
+    try {
+      await confirmPaymentWithRetry(pendingTxId)
+      markLocalPaid(pendingTxId)
+      setPayStage(null)
+    } catch (err) {
+      setPayError(err instanceof Error ? err.message : 'Confirmation failed')
       setPayStage(null)
     } finally {
       setPayLoading(false)
@@ -355,18 +406,43 @@ export default function LeagueOverview() {
               {!myMember.wallet_address && (
                 <p className="payment-warning">Connect your wallet to enable payment.</p>
               )}
+              {myMember.wallet_address && !walletState && !pendingTxId && (
+                <p className="payment-warning">Wallet disconnected — reconnect to pay your entry fee.</p>
+              )}
 
               <div className="payment-amount">
                 <span>{formatDollars(settings.entry_fee_cents)} USDC</span>
               </div>
 
-              <button
-                className="btn-primary payment-btn"
-                onClick={handlePay}
-                disabled={payLoading || !myMember.wallet_address}
-              >
-                {payLoading ? (payStage ?? 'Processing…') : 'Pay Entry Fee'}
-              </button>
+              {pendingTxId ? (
+                <>
+                  <p className="payment-warning">
+                    Transaction submitted but not yet confirmed.{' '}
+                    <a
+                      href={`https://hashscan.io/testnet/transaction/${pendingTxId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      View on HashScan
+                    </a>
+                  </p>
+                  <button
+                    className="btn-primary payment-btn"
+                    onClick={handleRetryConfirm}
+                    disabled={payLoading}
+                  >
+                    {payLoading ? (payStage ?? 'Confirming…') : 'Confirm Existing Payment'}
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="btn-primary payment-btn"
+                  onClick={handlePay}
+                  disabled={payLoading || !myMember.wallet_address || !walletState}
+                >
+                  {payLoading ? (payStage ?? 'Processing…') : 'Pay Entry Fee'}
+                </button>
+              )}
 
               {payError && <p className="payment-error">{payError}</p>}
             </>
