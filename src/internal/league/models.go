@@ -34,6 +34,7 @@ type League struct {
 	ImportedBy       string     `json:"imported_by"`
 	ImportedAt       time.Time  `json:"imported_at"`
 	LastSyncedAt     *time.Time `json:"last_synced_at,omitempty"`
+	CancelledAt      *time.Time `json:"cancelled_at,omitempty"`
 }
 
 // LeagueMember represents a member of a league with their roster information
@@ -83,6 +84,8 @@ var ErrNotCommissioner = errors.New("user is not commissioner of this league")
 var ErrNotLeagueMember = errors.New("user is not a member of this league")
 var ErrAlreadyPaid = errors.New("entry fee already paid")
 var ErrPaymentInsufficient = errors.New("on-chain payment amount is less than required entry fee")
+var ErrLeagueAlreadyCancelled = errors.New("league is already cancelled")
+var ErrLeagueNotCancelled = errors.New("league is not cancelled")
 
 // SetPaymentTokenRequest is the request payload for selecting a payment token
 type SetPaymentTokenRequest struct {
@@ -113,6 +116,11 @@ type ConfirmPaymentRequest struct {
 	TransactionID string `json:"transaction_id"`
 }
 
+// ConfirmRefundRequest is the body for POST /{leagueId}/confirm-refund
+type ConfirmRefundRequest struct {
+	TransactionID string `json:"transaction_id"`
+}
+
 // BonusCriteria holds type-specific parameters for weekly bonus entries.
 type BonusCriteria struct {
 	Threshold *float64 `json:"threshold,omitempty"` // points required (score_threshold)
@@ -133,6 +141,7 @@ type LeagueSettings struct {
 	TotalRosters    int           `json:"total_rosters"`
 	PayoutStructure []PayoutEntry `json:"payout_structure"`
 	IsCommissioner  bool          `json:"is_commissioner"`
+	CancelledAt     *time.Time    `json:"cancelled_at,omitempty"`
 }
 
 type UpdateSettingsRequest struct {
