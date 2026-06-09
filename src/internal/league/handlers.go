@@ -37,6 +37,7 @@ func (h *Handler) RegisterRoutes(r chi.Router, auth auth.Handlers) {
 		r.Post("/{leagueId}/confirm-payment", h.ConfirmPayment)
 		r.Get("/{leagueId}/payment-status", h.GetPaymentStatus)
 		r.Post("/{leagueId}/cancel", h.CancelLeague)
+		r.Post("/{leagueId}/reactivate", h.ReactivateLeague)
 		r.Post("/{leagueId}/confirm-refund", h.ConfirmRefund)
 		r.Post("/{leagueId}/oracle/week-results", h.OracleWeekResults)
 }
@@ -322,6 +323,30 @@ func (h *Handler) CancelLeague(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, ErrLeagueAlreadyCancelled) {
 			http.Error(w, "league is already cancelled", http.StatusConflict)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ReactivateLeague handles POST /{leagueId}/reactivate (commissioner only)
+func (h *Handler) ReactivateLeague(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaimsFromContext(r.Context())
+	if claims == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	leagueID := chi.URLParam(r, "leagueId")
+	err := h.service.ReactivateLeague(r.Context(), leagueID, claims.UserID)
+	if err != nil {
+		if errors.Is(err, ErrNotCommissioner) {
+			http.Error(w, "forbidden: you are not the commissioner", http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, ErrLeagueNotCancelled) {
+			http.Error(w, "league is not cancelled", http.StatusConflict)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)

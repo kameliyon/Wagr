@@ -835,6 +835,41 @@ func (s *Service) CancelLeague(ctx context.Context, leagueID, userID string) err
 	return nil
 }
 
+// ReactivateLeague clears cancelled_at and resets refunded members to unpaid; commissioner only
+func (s *Service) ReactivateLeague(ctx context.Context, leagueID, userID string) error {
+	var isCommissioner bool
+	err := s.db.QueryRow(ctx, `
+		SELECT COALESCE(BOOL_OR(lm.is_owner), false)
+		FROM league_members lm
+		JOIN platform_profiles pp ON pp.platform = lm.platform AND pp.platform_user_id = lm.platform_user_id
+		WHERE lm.league_id = $1 AND pp.user_id = $2
+		GROUP BY lm.league_id
+	`, leagueID, userID).Scan(&isCommissioner)
+	if err != nil || !isCommissioner {
+		return ErrNotCommissioner
+	}
+
+	result, err := s.db.Exec(ctx, `
+		UPDATE leagues SET cancelled_at = NULL, updated_at = NOW()
+		WHERE id = $1 AND cancelled_at IS NOT NULL
+	`, leagueID)
+	if err != nil {
+		return fmt.Errorf("failed to reactivate league: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return ErrLeagueNotCancelled
+	}
+
+	_, err = s.db.Exec(ctx, `
+		UPDATE league_members SET payment_status = 'unpaid', transaction_hash = NULL, updated_at = NOW()
+		WHERE league_id = $1 AND payment_status = 'refunded'
+	`, leagueID)
+	if err != nil {
+		return fmt.Errorf("failed to reset refunded members: %w", err)
+	}
+	return nil
+}
+
 // ConfirmRefund verifies the on-chain refund via Mirror Node and marks the member as refunded
 func (s *Service) ConfirmRefund(ctx context.Context, leagueID, userID, transactionID string) error {
 	var walletAddress string
