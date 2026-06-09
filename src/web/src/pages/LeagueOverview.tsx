@@ -56,12 +56,21 @@ export default function LeagueOverview() {
   const [payStage, setPayStage] = useState<string | null>(null)
   const [payError, setPayError] = useState<string | null>(null)
   const [payLoading, setPayLoading] = useState(false)
-  // Persisted transaction ID for a submitted-but-not-yet-confirmed payment.
-  // Saved before confirmation so a page refresh doesn't lose it.
   const pendingTxKey = leagueId ? `wagr_pending_tx_${leagueId}` : null
   const [pendingTxId, setPendingTxId] = useState<string | null>(
     () => (pendingTxKey ? localStorage.getItem(pendingTxKey) : null)
   )
+
+  // Refund panel state
+  const [refundStage, setRefundStage] = useState<string | null>(null)
+  const [refundError, setRefundError] = useState<string | null>(null)
+  const [refundLoading, setRefundLoading] = useState(false)
+  const pendingRefundTxKey = leagueId ? `wagr_pending_refund_${leagueId}` : null
+  const [pendingRefundTxId, setPendingRefundTxId] = useState<string | null>(
+    () => (pendingRefundTxKey ? localStorage.getItem(pendingRefundTxKey) : null)
+  )
+  const [cancelLoading, setCancelLoading] = useState(false)
+  const [reactivateLoading, setReactivateLoading] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated) navigate('/')
@@ -236,6 +245,196 @@ export default function LeagueOverview() {
     }
   }
 
+  const confirmRefundWithRetry = async (txId: string) => {
+    const MAX_ATTEMPTS = 8
+    const RETRY_MS = 5000
+    let res: Response | null = null
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      setRefundStage(
+        attempt === 1
+          ? 'Waiting for on-chain confirmation…'
+          : `Confirming refund… (${attempt}/${MAX_ATTEMPTS})`
+      )
+      if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, RETRY_MS))
+      res = await fetch(`/api/leagues/${leagueId}/confirm-refund`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transaction_id: txId }),
+      })
+      if (res.status !== 402) break
+    }
+    if (!res) throw new Error('Confirmation failed')
+    if (res.status === 402) {
+      throw new Error('On-chain refund not confirmed — it may still be propagating. Use "Confirm Existing Refund" to retry.')
+    }
+    if (res.status === 409) return
+    if (!res.ok) {
+      const msg = await res.text()
+      throw new Error(msg || `Refund confirmation failed (${res.status})`)
+    }
+  }
+
+  const markLocalRefunded = (txId: string) => {
+    if (pendingRefundTxKey) localStorage.removeItem(pendingRefundTxKey)
+    setPendingRefundTxId(null)
+    setDetail((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        members: prev.members.map((m) =>
+          m.user_id === user?.id
+            ? { ...m, payment_status: 'refunded' as const, transaction_hash: txId }
+            : m,
+        ),
+      }
+    })
+  }
+
+  const handleCancelLeague = async () => {
+    if (!token || !leagueId) return
+    if (!window.confirm('Cancel this league? This cannot be undone. Paid members will be able to claim refunds.')) return
+    setCancelLoading(true)
+    try {
+      const res = await fetch(`/api/leagues/${leagueId}/cancel`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const msg = await res.text()
+        throw new Error(msg || `Failed to cancel league (${res.status})`)
+      }
+      setDetail((prev) => prev ? { ...prev, league: { ...prev.league, cancelled_at: new Date().toISOString() } } : prev)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to cancel league')
+    } finally {
+      setCancelLoading(false)
+    }
+  }
+
+  const handleReactivateLeague = async () => {
+    if (!token || !leagueId) return
+    if (!window.confirm('Reactivate this league? Members who claimed refunds will need to re-pay their entry fee.')) return
+    setReactivateLoading(true)
+    try {
+      const res = await fetch(`/api/leagues/${leagueId}/reactivate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const msg = await res.text()
+        throw new Error(msg || `Failed to reactivate league (${res.status})`)
+      }
+      setDetail((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          league: { ...prev.league, cancelled_at: null },
+          members: prev.members.map((m) =>
+            m.payment_status === 'refunded'
+              ? { ...m, payment_status: 'unpaid' as const, transaction_hash: undefined }
+              : m,
+          ),
+        }
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reactivate league')
+    } finally {
+      setReactivateLoading(false)
+    }
+  }
+
+  const handleClaimRefund = async () => {
+    if (!token || !leagueId) return
+    if (!walletState || !activeStrategy) {
+      setRefundError('Wallet not connected. Please reconnect your wallet.')
+      return
+    }
+    if (!(activeStrategy instanceof HederaStrategy)) {
+      setRefundError('Only Hedera wallets are supported for USDC refunds')
+      return
+    }
+
+    const contractId = import.meta.env.VITE_HEDERA_ESCROW_CONTRACT_ID
+    if (!contractId) {
+      setRefundError('Contract ID not configured')
+      return
+    }
+
+    setRefundLoading(true)
+    setRefundStage(null)
+    setRefundError(null)
+
+    try {
+      setRefundStage('Sending refund transaction in HashPack…')
+      let transactionId: string
+      try {
+        const result = await activeStrategy.claimRefund({ leagueId, contractId, walletState })
+        transactionId = result.transactionId
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (msg.toLowerCase().includes('reject') || msg.toLowerCase().includes('cancel')) {
+          throw new Error('Transaction rejected in HashPack')
+        }
+        if (msg.includes('CONTRACT_REVERT_EXECUTED')) {
+          // Extract transactionId from the StatusError message and look up the Solidity revert reason
+          const txMatch = msg.match(/transaction ([\d.@]+)/)
+          if (txMatch) {
+            // "0.0.12345@1234567890.123456789" → "0.0.12345-1234567890-123456789"
+            const mirrorTxId = txMatch[1].replace('@', '-').replace(/\.(\d+)$/, '-$1')
+            try {
+              const mirrorRes = await fetch(
+                `https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${mirrorTxId}`,
+              )
+              if (mirrorRes.ok) {
+                const mirrorData = await mirrorRes.json()
+                const reason = mirrorData?.error_message
+                if (reason) throw new Error(`Contract reverted: "${reason}"`)
+              }
+            } catch (innerErr) {
+              if (innerErr instanceof Error && innerErr.message.startsWith('Contract reverted')) throw innerErr
+            }
+          }
+        }
+        throw new Error(`HashPack transaction failed: ${msg}`)
+      }
+
+      if (pendingRefundTxKey) localStorage.setItem(pendingRefundTxKey, transactionId)
+      setPendingRefundTxId(transactionId)
+
+      await confirmRefundWithRetry(transactionId)
+      markLocalRefunded(transactionId)
+      setRefundStage(null)
+    } catch (err) {
+      setRefundError(err instanceof Error ? err.message : 'Refund failed')
+      setRefundStage(null)
+    } finally {
+      setRefundLoading(false)
+    }
+  }
+
+  const handleRetryRefundConfirm = async () => {
+    if (!token || !leagueId || !pendingRefundTxId) return
+    setRefundLoading(true)
+    setRefundStage(null)
+    setRefundError(null)
+    try {
+      await confirmRefundWithRetry(pendingRefundTxId)
+      markLocalRefunded(pendingRefundTxId)
+      setRefundStage(null)
+    } catch (err) {
+      setRefundError(err instanceof Error ? err.message : 'Confirmation failed')
+      setRefundStage(null)
+    } finally {
+      setRefundLoading(false)
+    }
+  }
+
+  const handleDismissPendingRefund = () => {
+    if (pendingRefundTxKey) localStorage.removeItem(pendingRefundTxKey)
+    setPendingRefundTxId(null)
+    setRefundError(null)
+  }
+
   if (!isAuthenticated) return null
 
   if (loading) {
@@ -275,6 +474,7 @@ export default function LeagueOverview() {
   const sorted = [...members].sort((a, b) => b.total_points - a.total_points)
   const prizePool = settings.entry_fee_cents * settings.total_rosters
   const isCommissioner = settings.is_commissioner
+  const isCancelled = !!league.cancelled_at
 
   // Find the current user's member record
   const myMember = members.find((m) => m.user_id === user?.id) ?? null
@@ -303,6 +503,11 @@ export default function LeagueOverview() {
               Settings
             </Link>
           )}
+          {isCommissioner && !isCancelled && (
+            <button className="btn-danger" onClick={handleCancelLeague} disabled={cancelLoading}>
+              {cancelLoading ? 'Cancelling…' : 'Cancel League'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -321,6 +526,18 @@ export default function LeagueOverview() {
           <span className="stat-chip-value">{formatDollars(prizePool)}</span>
         </div>
       </div>
+
+      {/* Cancelled banner */}
+      {isCancelled && (
+        <div className="cancelled-banner">
+          <span>This league has been cancelled. Paid members may claim their refund below.</span>
+          {isCommissioner && (
+            <button className="btn-reactivate" onClick={handleReactivateLeague} disabled={reactivateLoading}>
+              {reactivateLoading ? 'Reactivating…' : 'Reactivate League'}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Teams table */}
       <div className="settings-section">
@@ -387,7 +604,81 @@ export default function LeagueOverview() {
       {myMember && (
         <div className="payment-panel">
           <h2>Your Payment</h2>
-          {myMember.payment_status === 'paid' ? (
+          {myMember.payment_status === 'refunded' ? (
+            <div className="payment-paid">
+              <span className="badge badge--refunded">Refunded</span>
+              {myMember.transaction_hash && (
+                <a
+                  className="hashscan-link"
+                  href={`https://hashscan.io/testnet/transaction/${myMember.transaction_hash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  View on HashScan
+                </a>
+              )}
+            </div>
+          ) : myMember.payment_status === 'paid' && isCancelled ? (
+            <>
+              <div className="payment-paid">
+                <span className="badge badge--paid">Paid</span>
+                {myMember.transaction_hash && (
+                  <a
+                    className="hashscan-link"
+                    href={`https://hashscan.io/testnet/transaction/${myMember.transaction_hash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View payment on HashScan
+                  </a>
+                )}
+              </div>
+
+              {pendingRefundTxId ? (
+                <>
+                  <p className="payment-warning">
+                    Refund transaction submitted but not yet confirmed.{' '}
+                    <a
+                      href={`https://hashscan.io/testnet/transaction/${pendingRefundTxId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      View on HashScan
+                    </a>
+                  </p>
+                  <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      className="btn-primary payment-btn"
+                      onClick={handleRetryRefundConfirm}
+                      disabled={refundLoading}
+                    >
+                      {refundLoading ? (refundStage ?? 'Confirming…') : 'Confirm Existing Refund'}
+                    </button>
+                    <button
+                      className="btn-link-muted"
+                      onClick={handleDismissPendingRefund}
+                      disabled={refundLoading}
+                    >
+                      Try New Transaction
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <button
+                  className="btn-primary payment-btn"
+                  onClick={handleClaimRefund}
+                  disabled={refundLoading || !walletState}
+                >
+                  {refundLoading ? (refundStage ?? 'Processing…') : 'Claim Refund'}
+                </button>
+              )}
+
+              {!walletState && !pendingRefundTxId && (
+                <p className="payment-warning">Wallet disconnected — reconnect to claim your refund.</p>
+              )}
+              {refundError && <p className="payment-error">{refundError}</p>}
+            </>
+          ) : myMember.payment_status === 'paid' ? (
             <div className="payment-paid">
               <span className="badge badge--paid">Paid</span>
               {myMember.transaction_hash && (
@@ -401,6 +692,8 @@ export default function LeagueOverview() {
                 </a>
               )}
             </div>
+          ) : isCancelled ? (
+            <p className="payment-warning">This league has been cancelled. No payment is required.</p>
           ) : (
             <>
               {!myMember.wallet_address && (
