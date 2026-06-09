@@ -413,6 +413,63 @@ export class HederaStrategy implements WalletStrategy {
         return { transactionId }
     }
 
+    /**
+     * Claim a USDC refund from the LeagueEscrow contract.
+     * Single transaction — no allowance step required (contract sends back to msg.sender).
+     * Gas is higher than payEntryFee because claimRefund calls HTS associateToken internally.
+     */
+    async claimRefund(params: {
+        leagueId: string
+        contractId: string
+        walletState: WalletState
+    }): Promise<{ transactionId: string }> {
+        if (!this.connector) {
+            throw new Error('Wallet not connected. Call connect() first.')
+        }
+
+        const { leagueId, contractId, walletState } = params
+
+        if (!walletState.accountId) {
+            throw new Error('Account ID not found in wallet state')
+        }
+
+        const {
+            ContractExecuteTransaction,
+            ContractFunctionParameters,
+            AccountId,
+            ContractId,
+        } = await import('@hashgraph/sdk')
+
+        const signers = (this.connector as any).signers
+        if (!signers || signers.length === 0) {
+            throw new Error('No WalletConnect signer available. Is HashPack connected?')
+        }
+        const signer = signers[0]
+
+        const leagueIdHex = leagueId.replace(/-/g, '').padEnd(64, '0')
+        const leagueIdBytes32 = new Uint8Array(32)
+        for (let i = 0; i < 32; i++) {
+            leagueIdBytes32[i] = parseInt(leagueIdHex.substring(i * 2, i * 2 + 2), 16)
+        }
+
+        const nodeAccountIds = [new AccountId(3), new AccountId(4), new AccountId(5)]
+
+        const tx = await new ContractExecuteTransaction()
+            .setContractId(ContractId.fromString(contractId))
+            .setGas(800_000)
+            .setFunction(
+                'claimRefund',
+                new ContractFunctionParameters().addBytes32(leagueIdBytes32),
+            )
+            .setNodeAccountIds(nodeAccountIds)
+            .freezeWithSigner(signer)
+
+        const response = await tx.executeWithSigner(signer)
+
+        const transactionId = response.transactionId?.toString() ?? String(response)
+        return { transactionId }
+    }
+
     getDefaultNetwork(): string {
         return HEDERA_DEFAULT_NETWORK
     }
@@ -425,74 +482,6 @@ export class HederaStrategy implements WalletStrategy {
         return Array.from(bytes)
             .map((b) => b.toString(16).padStart(2, '0'))
             .join('')
-    }
-
-    private base64ToUint8Array(base64: string): Uint8Array {
-        const binaryString = atob(base64)
-        const bytes = new Uint8Array(binaryString.length)
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i)
-        }
-        return bytes
-    }
-
-    /**
-     * Extract the signature from a protobuf-encoded SignaturePair.
-     * Hedera SignaturePair structure:
-     * - Field 1 (pubKeyPrefix): 0x0a [length] [bytes]
-     * - Field 3 (ed25519): 0x1a [length] [bytes]
-     * - Field 4 (ECDSASecp256k1): 0x22 [length] [bytes]
-     */
-    private extractSignatureFromProtobuf(data: Uint8Array): Uint8Array | null {
-        let offset = 0
-
-        // Skip outer wrapper if present (field 1, length-delimited)
-        if (data[0] === 0x0a && data.length > 2) {
-            const outerLen = data[1]
-            if (outerLen === data.length - 2) {
-                // It's wrapped, skip the wrapper
-                offset = 2
-            }
-        }
-
-        while (offset < data.length - 2) {
-            const fieldTag = data[offset]
-            const wireType = fieldTag & 0x07
-
-            if (wireType !== 2) {
-                // Not length-delimited, skip
-                offset++
-                continue
-            }
-
-            const length = data[offset + 1]
-            const fieldStart = offset + 2
-            const fieldEnd = fieldStart + length
-
-            if (fieldEnd > data.length) {
-                console.warn('Protobuf field extends beyond data')
-                break
-            }
-
-            // Field 3 = ed25519 signature (0x1a = (3 << 3) | 2)
-            // Field 4 = ECDSA signature (0x22 = (4 << 3) | 2)
-            if (fieldTag === 0x1a && length === 64) {
-                return data.slice(fieldStart, fieldEnd)
-            }
-            if (fieldTag === 0x22) {
-                return data.slice(fieldStart, fieldEnd)
-            }
-
-            offset = fieldEnd
-        }
-
-        // Fallback: if data is large enough, try extracting last 64 bytes as signature
-        if (data.length >= 100) {
-            const sigStart = data.length - 64
-            return data.slice(sigStart)
-        }
-
-        return null
     }
 
     /**
