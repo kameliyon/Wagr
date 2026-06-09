@@ -78,7 +78,7 @@ const CHUNK = 4096
 const fileCreateTx = await new FileCreateTransaction()
   .setKeys([parsedKey])
   .setContents(fullBytecode.slice(0, CHUNK))
-  .setMaxTransactionFee(new Hbar(2))
+  .setMaxTransactionFee(new Hbar(5))
   .execute(client)
 
 const fileReceipt = await fileCreateTx.getReceipt(client)
@@ -91,7 +91,7 @@ for (let offset = CHUNK; offset < fullBytecode.length; offset += CHUNK) {
     await new FileAppendTransaction()
       .setFileId(fileId)
       .setContents(chunk)
-      .setMaxTransactionFee(new Hbar(2))
+      .setMaxTransactionFee(new Hbar(5))
       .execute(client)
   ).getReceipt(client)
 }
@@ -100,7 +100,7 @@ const contractTx = await new ContractCreateTransaction()
   .setBytecodeFileId(fileId)
   .setConstructorParameters(new ContractFunctionParameters().addAddress(usdcEvmAddress))
   .setGas(2_000_000)
-  .setMaxTransactionFee(new Hbar(10))
+  .setMaxTransactionFee(new Hbar(20))
   .execute(client)
 
 const contractReceipt = await contractTx.getReceipt(client)
