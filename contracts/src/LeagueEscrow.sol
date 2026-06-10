@@ -14,6 +14,10 @@ contract LeagueEscrow {
     address public immutable usdc;
     address public immutable owner;
 
+    // HTS precompile response codes (Hedera ResponseCodeEnum protobuf values)
+    int64 private constant RC_SUCCESS = 22;
+    int64 private constant RC_ALREADY_ASSOCIATED = 194;
+
     // leagueId => member EVM address => amount paid (6-decimal USDC)
     mapping(bytes32 => mapping(address => uint256)) public payments;
 
@@ -22,15 +26,15 @@ contract LeagueEscrow {
 
     event EntryFeePaid(bytes32 indexed leagueId, address indexed member, uint256 amount);
     event PayoutDistributed(bytes32 indexed leagueId, address indexed recipient, uint256 amount);
+    event RefundClaimed(bytes32 indexed leagueId, address indexed member, uint256 amount);
 
     constructor(address _usdc) {
         usdc = _usdc;
         owner = msg.sender;
         // Associate USDC with this contract so it can hold the token.
-        // SUCCESS = 22, TOKEN_ALREADY_ASSOCIATED_TO_ACCOUNT = 194
         int64 rc = IHederaTokenService(0x0000000000000000000000000000000000000167)
             .associateToken(address(this), _usdc);
-        require(rc == 22 || rc == 194, "USDC association failed");
+        require(rc == RC_SUCCESS || rc == RC_ALREADY_ASSOCIATED, "USDC association failed");
     }
 
     modifier onlyOwner() {
@@ -40,7 +44,7 @@ contract LeagueEscrow {
 
     function payEntryFee(bytes32 leagueId, uint256 amount) external {
         require(amount > 0, "amount must be > 0");
-        // Update state before external call (checks-effects-interactions)
+        // checks-effects-interactions: update state before external call
         payments[leagueId][msg.sender] += amount;
         leagueTotals[leagueId] += amount;
         bool ok = IERC20(usdc).transferFrom(msg.sender, address(this), amount);
@@ -48,6 +52,21 @@ contract LeagueEscrow {
         emit EntryFeePaid(leagueId, msg.sender, amount);
     }
 
+    // Callers must already have USDC associated with their account (guaranteed for anyone who paid).
+    // associateToken(msg.sender, ...) is not called here because the HTS precompile rejects
+    // contract-initiated associations for arbitrary accounts even when msg.sender matches.
+    function claimRefund(bytes32 leagueId) external {
+        uint256 amount = payments[leagueId][msg.sender];
+        require(amount > 0, "nothing to refund");
+        // checks-effects-interactions: clear state before external calls
+        payments[leagueId][msg.sender] = 0;
+        leagueTotals[leagueId] -= amount;
+        bool ok = IERC20(usdc).transfer(msg.sender, amount);
+        require(ok, "refund transfer failed");
+        emit RefundClaimed(leagueId, msg.sender, amount);
+    }
+
+    // Recipients must already have USDC associated (guaranteed for members who paid entry fees).
     function distributePayout(
         bytes32 leagueId,
         address[] calldata recipients,
@@ -55,27 +74,25 @@ contract LeagueEscrow {
     ) external onlyOwner {
         require(recipients.length == amounts.length, "length mismatch");
 
-        // Validate total payout does not exceed what was collected for this league
         uint256 total = 0;
         for (uint256 i = 0; i < amounts.length; i++) {
             total += amounts[i];
         }
         require(total <= leagueTotals[leagueId], "payout exceeds league escrow");
 
-        // Deduct from league total before transfers (checks-effects-interactions)
+        // checks-effects-interactions: deduct before transfers
         leagueTotals[leagueId] -= total;
 
         for (uint256 i = 0; i < recipients.length; i++) {
-            // Associate recipient with USDC if not already — required on Hedera before any transfer
-            // SUCCESS = 22, TOKEN_ALREADY_ASSOCIATED_TO_ACCOUNT = 194
-            int64 rc = IHederaTokenService(0x0000000000000000000000000000000000000167)
-                .associateToken(recipients[i], usdc);
-            require(rc == 22 || rc == 194, "recipient association failed");
-
             bool ok = IERC20(usdc).transfer(recipients[i], amounts[i]);
             require(ok, "payout transfer failed");
-
             emit PayoutDistributed(leagueId, recipients[i], amounts[i]);
         }
+    }
+
+    // Recover any tokens held by this contract. Safety valve for stranded funds.
+    function emergencyWithdraw(address token, uint256 amount) external onlyOwner {
+        bool ok = IERC20(token).transfer(owner, amount);
+        require(ok, "emergency withdrawal failed");
     }
 }

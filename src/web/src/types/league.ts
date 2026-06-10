@@ -13,6 +13,7 @@ export interface League {
   imported_by: string;
   imported_at: string;
   last_synced_at?: string;
+  cancelled_at?: string | null;
 }
 
 export type BonusType = 'weekly_high_score' | 'score_threshold' | 'highest_weekly_score'
@@ -36,6 +37,7 @@ export interface LeagueSettings {
   total_rosters: number;
   payout_structure: PayoutEntry[];
   is_commissioner: boolean;
+  cancelled_at?: string | null;
 }
 
 export interface PlatformLeague {

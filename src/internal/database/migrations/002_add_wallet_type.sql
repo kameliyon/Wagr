@@ -1,3 +1,4 @@
+-- +goose Up
 -- Add wallet_type column to users table to support multiple wallet types
 
 -- Add wallet_type column with default value for existing rows

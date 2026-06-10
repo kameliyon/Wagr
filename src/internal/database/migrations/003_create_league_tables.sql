@@ -1,3 +1,4 @@
+-- +goose Up
 -- Migration 003: Create league management tables (Sleeper-specific)
 -- SUPERSEDED by migration 004 (platform-agnostic schema).
 -- This file is intentionally left empty to preserve migration numbering.

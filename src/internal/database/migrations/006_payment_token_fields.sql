@@ -1,3 +1,4 @@
+-- +goose Up
 ALTER TABLE league_members
   ADD COLUMN IF NOT EXISTS payment_token    VARCHAR(10)              DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS transaction_hash VARCHAR(255)             DEFAULT NULL,

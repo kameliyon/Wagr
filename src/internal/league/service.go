@@ -270,13 +270,14 @@ func (s *Service) GetUserLeagues(ctx context.Context, userID string) ([]League, 
 	query := `
 		SELECT l.id, l.platform, l.platform_league_id, l.name, l.sport, l.season, l.status,
 			l.total_rosters, l.scoring_type, l.entry_fee_cents, l.created_at, l.updated_at,
-			BOOL_OR(lm.is_owner) AS is_commissioner
+			l.cancelled_at, BOOL_OR(lm.is_owner) AS is_commissioner
 		FROM leagues l
 		JOIN league_members lm ON lm.league_id = l.id
 		JOIN platform_profiles pp ON pp.platform = lm.platform AND pp.platform_user_id = lm.platform_user_id
 		WHERE pp.user_id = $1
 		GROUP BY l.id, l.platform, l.platform_league_id, l.name, l.sport, l.season, l.status,
-			l.total_rosters, l.scoring_type, l.entry_fee_cents, l.created_at, l.updated_at
+			l.total_rosters, l.scoring_type, l.entry_fee_cents, l.created_at, l.updated_at,
+			l.cancelled_at
 		ORDER BY l.created_at DESC
 	`
 
@@ -302,6 +303,7 @@ func (s *Service) GetUserLeagues(ctx context.Context, userID string) ([]League, 
 			&league.EntryFeeCents,
 			&league.ImportedAt,
 			&league.LastSyncedAt,
+			&league.CancelledAt,
 			&league.IsCommissioner,
 		)
 		if err != nil {
@@ -317,7 +319,7 @@ func (s *Service) GetUserLeagues(ctx context.Context, userID string) ([]League, 
 func (s *Service) GetLeague(ctx context.Context, leagueID string) (*League, error) {
 	query := `
 		SELECT id, platform, platform_league_id, name, sport, season, status,
-			total_rosters, scoring_type, entry_fee_cents, created_at, updated_at
+			total_rosters, scoring_type, entry_fee_cents, created_at, updated_at, cancelled_at
 		FROM leagues
 		WHERE id = $1
 	`
@@ -336,6 +338,7 @@ func (s *Service) GetLeague(ctx context.Context, leagueID string) (*League, erro
 		&league.EntryFeeCents,
 		&league.ImportedAt,
 		&league.LastSyncedAt,
+		&league.CancelledAt,
 	)
 
 	if err != nil {
@@ -387,14 +390,15 @@ func (s *Service) DeleteLeague(ctx context.Context, leagueID, userID string) err
 func (s *Service) GetLeagueSettings(ctx context.Context, leagueID, userID string) (*LeagueSettings, error) {
 	query := `
 		SELECT l.entry_fee_cents, l.total_rosters, l.payout_structure,
-			COALESCE(BOOL_OR(lm.is_owner) FILTER (WHERE pp.user_id IS NOT NULL), false) AS is_commissioner
+			COALESCE(BOOL_OR(lm.is_owner) FILTER (WHERE pp.user_id IS NOT NULL), false) AS is_commissioner,
+			l.cancelled_at
 		FROM leagues l
 		LEFT JOIN league_members lm ON lm.league_id = l.id
 		LEFT JOIN platform_profiles pp ON pp.platform = lm.platform
 			AND pp.platform_user_id = lm.platform_user_id
 			AND pp.user_id = $2
 		WHERE l.id = $1
-		GROUP BY l.entry_fee_cents, l.total_rosters, l.payout_structure
+		GROUP BY l.entry_fee_cents, l.total_rosters, l.payout_structure, l.cancelled_at
 	`
 	settings := &LeagueSettings{PayoutStructure: []PayoutEntry{}}
 	var payoutJSON []byte
@@ -403,6 +407,7 @@ func (s *Service) GetLeagueSettings(ctx context.Context, leagueID, userID string
 		&settings.TotalRosters,
 		&payoutJSON,
 		&settings.IsCommissioner,
+		&settings.CancelledAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get league settings: %w", err)
@@ -606,7 +611,7 @@ func (s *Service) ConfirmPayment(ctx context.Context, leagueID, userID, transact
 		return ErrAlreadyPaid
 	}
 
-	evmAddr, err := hederaAccountToEVM(walletAddress)
+	evmAddr, err := s.getAccountEVMAddress(ctx, walletAddress)
 	if err != nil {
 		return fmt.Errorf("invalid wallet address %q: %w", walletAddress, err)
 	}
@@ -648,6 +653,42 @@ func (s *Service) ConfirmPayment(ctx context.Context, leagueID, userID, transact
 	}
 
 	return nil
+}
+
+// getAccountEVMAddress fetches the canonical EVM address for a Hedera account from the Mirror Node.
+// ECDSA (HashPack) accounts have a key-derived alias that differs from the long-zero format;
+// using the Mirror Node ensures msg.sender in contracts matches the lookup address.
+func (s *Service) getAccountEVMAddress(ctx context.Context, accountID string) ([20]byte, error) {
+	mirrorURL := fmt.Sprintf("https://%s.mirrornode.hedera.com/api/v1/accounts/%s", s.hederaNetwork, accountID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, mirrorURL, nil)
+	if err != nil {
+		return hederaAccountToEVM(accountID)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return hederaAccountToEVM(accountID)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return hederaAccountToEVM(accountID)
+	}
+	var result struct {
+		EvmAddress string `json:"evm_address"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || result.EvmAddress == "" {
+		return hederaAccountToEVM(accountID)
+	}
+	evmHex := strings.TrimPrefix(result.EvmAddress, "0x")
+	if len(evmHex) != 40 {
+		return hederaAccountToEVM(accountID)
+	}
+	addrBytes, err := hex.DecodeString(evmHex)
+	if err != nil {
+		return hederaAccountToEVM(accountID)
+	}
+	var addr [20]byte
+	copy(addr[:], addrBytes)
+	return addr, nil
 }
 
 // hederaAccountToEVM converts "0.0.NNNNN" to a 20-byte EVM address (shard.realm ignored, num in last 8 bytes)
@@ -765,6 +806,136 @@ func (s *Service) readContractPayment(ctx context.Context, contractAddr [20]byte
 	// Parse last 8 bytes as uint64 (amounts fit well within int64 for any reasonable entry fee)
 	amount := int64(binary.BigEndian.Uint64(resultBytes[24:]))
 	return amount, nil
+}
+
+// CancelLeague marks a league as cancelled; only the commissioner may do this
+func (s *Service) CancelLeague(ctx context.Context, leagueID, userID string) error {
+	var isCommissioner bool
+	err := s.db.QueryRow(ctx, `
+		SELECT COALESCE(BOOL_OR(lm.is_owner), false)
+		FROM league_members lm
+		JOIN platform_profiles pp ON pp.platform = lm.platform AND pp.platform_user_id = lm.platform_user_id
+		WHERE lm.league_id = $1 AND pp.user_id = $2
+		GROUP BY lm.league_id
+	`, leagueID, userID).Scan(&isCommissioner)
+	if err != nil || !isCommissioner {
+		return ErrNotCommissioner
+	}
+
+	result, err := s.db.Exec(ctx, `
+		UPDATE leagues SET cancelled_at = NOW(), updated_at = NOW()
+		WHERE id = $1 AND cancelled_at IS NULL
+	`, leagueID)
+	if err != nil {
+		return fmt.Errorf("failed to cancel league: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return ErrLeagueAlreadyCancelled
+	}
+	return nil
+}
+
+// ReactivateLeague clears cancelled_at and resets refunded members to unpaid; commissioner only
+func (s *Service) ReactivateLeague(ctx context.Context, leagueID, userID string) error {
+	var isCommissioner bool
+	err := s.db.QueryRow(ctx, `
+		SELECT COALESCE(BOOL_OR(lm.is_owner), false)
+		FROM league_members lm
+		JOIN platform_profiles pp ON pp.platform = lm.platform AND pp.platform_user_id = lm.platform_user_id
+		WHERE lm.league_id = $1 AND pp.user_id = $2
+		GROUP BY lm.league_id
+	`, leagueID, userID).Scan(&isCommissioner)
+	if err != nil || !isCommissioner {
+		return ErrNotCommissioner
+	}
+
+	result, err := s.db.Exec(ctx, `
+		UPDATE leagues SET cancelled_at = NULL, updated_at = NOW()
+		WHERE id = $1 AND cancelled_at IS NOT NULL
+	`, leagueID)
+	if err != nil {
+		return fmt.Errorf("failed to reactivate league: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return ErrLeagueNotCancelled
+	}
+
+	_, err = s.db.Exec(ctx, `
+		UPDATE league_members SET payment_status = 'unpaid', transaction_hash = NULL, updated_at = NOW()
+		WHERE league_id = $1 AND payment_status = 'refunded'
+	`, leagueID)
+	if err != nil {
+		return fmt.Errorf("failed to reset refunded members: %w", err)
+	}
+	return nil
+}
+
+// ConfirmRefund verifies the on-chain refund via Mirror Node and marks the member as refunded
+func (s *Service) ConfirmRefund(ctx context.Context, leagueID, userID, transactionID string) error {
+	var walletAddress string
+	var paymentStatus string
+	var cancelledAt *time.Time
+
+	err := s.db.QueryRow(ctx, `
+		SELECT COALESCE(u.wallet_address, lm.wallet_address, ''), lm.payment_status, l.cancelled_at
+		FROM league_members lm
+		JOIN leagues l ON l.id = lm.league_id
+		JOIN platform_profiles pp ON pp.platform = lm.platform AND pp.platform_user_id = lm.platform_user_id
+		LEFT JOIN users u ON u.id = pp.user_id
+		WHERE lm.league_id = $1 AND pp.user_id = $2
+	`, leagueID, userID).Scan(&walletAddress, &paymentStatus, &cancelledAt)
+
+	if err == pgx.ErrNoRows {
+		return ErrNotLeagueMember
+	}
+	if err != nil {
+		return fmt.Errorf("failed to fetch member info: %w", err)
+	}
+	if paymentStatus != "paid" {
+		return ErrPaymentInsufficient
+	}
+	if cancelledAt == nil {
+		return ErrLeagueNotCancelled
+	}
+
+	evmAddr, err := s.getAccountEVMAddress(ctx, walletAddress)
+	if err != nil {
+		return fmt.Errorf("invalid wallet address %q: %w", walletAddress, err)
+	}
+
+	leagueIdBytes, err := uuidToBytes32(leagueID)
+	if err != nil {
+		return fmt.Errorf("invalid league ID: %w", err)
+	}
+
+	contractEVM, err := hederaAccountToEVM(s.hederaEscrowContractID)
+	if err != nil {
+		return fmt.Errorf("invalid contract ID: %w", err)
+	}
+
+	callData := encodePaymentsCall(leagueIdBytes, evmAddr)
+
+	onChain, err := s.readContractPayment(ctx, contractEVM, callData)
+	if err != nil {
+		return fmt.Errorf("failed to verify on-chain refund: %w", err)
+	}
+	if onChain != 0 {
+		return ErrPaymentInsufficient
+	}
+
+	_, err = s.db.Exec(ctx, `
+		UPDATE league_members lm
+		SET payment_status = 'refunded', transaction_hash = $3, updated_at = NOW()
+		FROM platform_profiles pp
+		WHERE lm.league_id = $1
+		  AND lm.platform = pp.platform
+		  AND lm.platform_user_id = pp.platform_user_id
+		  AND pp.user_id = $2
+	`, leagueID, userID, transactionID)
+	if err != nil {
+		return fmt.Errorf("failed to update refund status: %w", err)
+	}
+	return nil
 }
 
 // GetPaymentStatus returns the full member list for a league, gated to league members only

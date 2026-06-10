@@ -101,7 +101,8 @@ export default function Leagues() {
       {!loading && !error && leagues.length > 0 && (
         <div className="leagues-list">
           {leagues.map((league) => (
-            <div key={league.id} className="league-card">
+            <div key={league.id} className={`league-card${league.cancelled_at ? ' league-card--cancelled' : ''}`}>
+              {league.cancelled_at && <span className="league-cancelled-label">Cancelled</span>}
               <div className="league-card-header">
                 <h2 className="league-name">{league.name}</h2>
                 <span className="platform-badge">{league.platform}</span>

@@ -3,6 +3,7 @@
 import type { WalletStrategy, WalletState, SignatureResult, TransferHBARParams, TransferHTSParams, PaymentResult } from '../types/wallet'
 import type { HederaNetworkId } from '../types/hedera'
 import { HEDERA_DEFAULT_NETWORK } from '../utils/walletConstants'
+import { proto } from '@hashgraph/proto'
 
 // Hedera Wallet Connect types
 interface DAppConnector {
@@ -166,6 +167,7 @@ export class HederaStrategy implements WalletStrategy {
             // Fetch the public key and key type from the Mirror Node API
             // This is the recommended and secure way to get the public key
             const { key: publicKey, keyType } = await this.fetchPublicKeyFromMirrorNode(accountId, networkString)
+            console.log("key type: " + keyType + ". \n public key: " + publicKey);
 
             return {
                 type: 'hedera',
@@ -212,74 +214,89 @@ export class HederaStrategy implements WalletStrategy {
         if (!this.connector) {
             throw new Error('Wallet not connected. Call connect() first.')
         }
-
+        
         if (!walletState.accountId) {
             throw new Error('Account ID not found in wallet state')
         }
-
+        
         try {
-            // Convert account ID to HIP-30 format: hedera:<network>:<accountId>
-            // e.g., "0.0.12345" -> "hedera:testnet:0.0.12345"
             const network = walletState.network || 'testnet'
             const signerAccountId = `hedera:${network}:${walletState.accountId}`
-
-            // Call signMessage with proper params
+            
             const result = await this.connector.signMessage({
                 signerAccountId,
                 message,
             })
-
+            
             if (!result || !result.signatureMap) {
                 throw new Error('No signature received from wallet')
             }
-
-            // Extract signature from signatureMap
+            
             let signatureHex: string
-
+            
             if (typeof result.signatureMap === 'string') {
-                // It's a base64-encoded protobuf SignaturePair
-                // Structure: 0x0a 0x20 [32-byte pubKeyPrefix] 0x1a 0x40 [64-byte signature]
-                const signatureBytes = this.base64ToUint8Array(result.signatureMap)
-
-                // Parse the protobuf to extract the signature
-                const extracted = this.extractSignatureFromProtobuf(signatureBytes)
-                if (extracted) {
-                    signatureHex = this.uint8ArrayToHex(extracted)
-                } else {
-                    // Fallback: use raw bytes (will likely fail verification)
-                    console.warn('Could not parse protobuf SignaturePair, using raw bytes')
-                    signatureHex = this.uint8ArrayToHex(signatureBytes)
+                const sigMapBytes = Uint8Array.from(atob(result.signatureMap), c => c.charCodeAt(0))
+                const sigMap = proto.SignatureMap.decode(sigMapBytes)
+                
+                const sigPair = sigMap.sigPair[0]
+                if (!sigPair) {
+                    throw new Error('No signature pair found in signature map')
                 }
+                
+                const sigPairAny = sigPair as any
+                const hasECDSA = sigPairAny.ECDSASecp256k1 && 
+                    Object.keys(sigPairAny.ECDSASecp256k1).length > 0
+
+                const hasED25519 = sigPairAny.ed25519 && 
+                    Object.keys(sigPairAny.ed25519).length > 0
+                
+                if (hasECDSA) {
+                    const rawObj = sigPairAny.ECDSASecp256k1
+                    const rawSignature = new Uint8Array(64)
+                    for (let i = 0; i < 64; i++) {
+                        rawSignature[i] = rawObj[i]
+                    }
+                    signatureHex = this.uint8ArrayToHex(rawSignature)
+                } else if (hasED25519) {
+                    const rawObj = sigPairAny.ed25519
+                    const rawSignature = new Uint8Array(64)
+                    for (let i = 0; i < 64; i++) {
+                        rawSignature[i] = rawObj[i]
+                    }
+                    signatureHex = this.uint8ArrayToHex(rawSignature)
+                } else {
+                    throw new Error('No supported signature type found in sigPair')
+                }
+                
             } else if (result.signatureMap.sigPair) {
-                // SignatureMap has sigPair array
                 const sigPair = Array.isArray(result.signatureMap.sigPair)
                     ? result.signatureMap.sigPair[0]
                     : result.signatureMap.sigPair
-
-                // Extract signature
-                if (sigPair.ed25519) {
-                    signatureHex = this.uint8ArrayToHex(sigPair.ed25519)
-                } else if (sigPair.ECDSASecp256k1) {
-                    signatureHex = this.uint8ArrayToHex(sigPair.ECDSASecp256k1)
+                
+                if (sigPair.ECDSASecp256k1) {
+                    signatureHex = this.uint8ArrayToHex(
+                        sigPair.ECDSASecp256k1 instanceof Uint8Array
+                            ? sigPair.ECDSASecp256k1
+                            : Uint8Array.from(Object.values(sigPair.ECDSASecp256k1))
+                    )
+                } else if (sigPair.ed25519) {
+                    signatureHex = this.uint8ArrayToHex(
+                        sigPair.ed25519 instanceof Uint8Array
+                            ? sigPair.ed25519
+                            : Uint8Array.from(Object.values(sigPair.ed25519))
+                    )
                 } else {
                     throw new Error('Unsupported signature type in signatureMap')
                 }
+                
             } else {
-                // Fallback: try to convert entire signatureMap
-                signatureHex = JSON.stringify(result.signatureMap)
+                throw new Error('Unrecognized signatureMap format')
             }
-
-            // Use the public key and key type from walletState (fetched from mirror node during connect)
-            const publicKey = walletState.publicKey
-            if (!publicKey) {
-                throw new Error('Public key not found in wallet state. Was the wallet connected properly?')
-            }
-
+            
             return {
                 signature: signatureHex,
-                publicKey,
-                keyType: walletState.keyType,
             }
+            
         } catch (err) {
             console.error('Error signing message with Hedera Wallet Connect:', err)
             throw err
@@ -359,6 +376,11 @@ export class HederaStrategy implements WalletStrategy {
             leagueIdBytes32[i] = parseInt(leagueIdHex.substring(i * 2, i * 2 + 2), 16)
         }
 
+        // hedera-wallet-connect v2 DAppSigner.populateTransaction() only sets the txId,
+        // not node account IDs. freezeWithSigner() calls freeze() which throws if no nodes
+        // are set. Nodes 0.0.3-0.0.5 are always available on testnet and mainnet.
+        const nodeAccountIds = [new AccountId(3), new AccountId(4), new AccountId(5)]
+
         // Step 1: Approve the escrow contract to spend USDC from the user's account
         const approveTx = await new AccountAllowanceApproveTransaction()
             .approveTokenAllowance(
@@ -367,6 +389,7 @@ export class HederaStrategy implements WalletStrategy {
                 AccountId.fromString(contractId),
                 amountUSDC,
             )
+            .setNodeAccountIds(nodeAccountIds)
             .freezeWithSigner(signer)
 
         await approveTx.executeWithSigner(signer)
@@ -381,9 +404,67 @@ export class HederaStrategy implements WalletStrategy {
                     .addBytes32(leagueIdBytes32)
                     .addUint256(amountUSDC),
             )
+            .setNodeAccountIds(nodeAccountIds)
             .freezeWithSigner(signer)
 
         const response = await contractCallTx.executeWithSigner(signer)
+
+        const transactionId = response.transactionId?.toString() ?? String(response)
+        return { transactionId }
+    }
+
+    /**
+     * Claim a USDC refund from the LeagueEscrow contract.
+     * Single transaction — no allowance step required (contract sends back to msg.sender).
+     * Gas is higher than payEntryFee because claimRefund calls HTS associateToken internally.
+     */
+    async claimRefund(params: {
+        leagueId: string
+        contractId: string
+        walletState: WalletState
+    }): Promise<{ transactionId: string }> {
+        if (!this.connector) {
+            throw new Error('Wallet not connected. Call connect() first.')
+        }
+
+        const { leagueId, contractId, walletState } = params
+
+        if (!walletState.accountId) {
+            throw new Error('Account ID not found in wallet state')
+        }
+
+        const {
+            ContractExecuteTransaction,
+            ContractFunctionParameters,
+            AccountId,
+            ContractId,
+        } = await import('@hashgraph/sdk')
+
+        const signers = (this.connector as any).signers
+        if (!signers || signers.length === 0) {
+            throw new Error('No WalletConnect signer available. Is HashPack connected?')
+        }
+        const signer = signers[0]
+
+        const leagueIdHex = leagueId.replace(/-/g, '').padEnd(64, '0')
+        const leagueIdBytes32 = new Uint8Array(32)
+        for (let i = 0; i < 32; i++) {
+            leagueIdBytes32[i] = parseInt(leagueIdHex.substring(i * 2, i * 2 + 2), 16)
+        }
+
+        const nodeAccountIds = [new AccountId(3), new AccountId(4), new AccountId(5)]
+
+        const tx = await new ContractExecuteTransaction()
+            .setContractId(ContractId.fromString(contractId))
+            .setGas(800_000)
+            .setFunction(
+                'claimRefund',
+                new ContractFunctionParameters().addBytes32(leagueIdBytes32),
+            )
+            .setNodeAccountIds(nodeAccountIds)
+            .freezeWithSigner(signer)
+
+        const response = await tx.executeWithSigner(signer)
 
         const transactionId = response.transactionId?.toString() ?? String(response)
         return { transactionId }
@@ -401,74 +482,6 @@ export class HederaStrategy implements WalletStrategy {
         return Array.from(bytes)
             .map((b) => b.toString(16).padStart(2, '0'))
             .join('')
-    }
-
-    private base64ToUint8Array(base64: string): Uint8Array {
-        const binaryString = atob(base64)
-        const bytes = new Uint8Array(binaryString.length)
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i)
-        }
-        return bytes
-    }
-
-    /**
-     * Extract the signature from a protobuf-encoded SignaturePair.
-     * Hedera SignaturePair structure:
-     * - Field 1 (pubKeyPrefix): 0x0a [length] [bytes]
-     * - Field 3 (ed25519): 0x1a [length] [bytes]
-     * - Field 4 (ECDSASecp256k1): 0x22 [length] [bytes]
-     */
-    private extractSignatureFromProtobuf(data: Uint8Array): Uint8Array | null {
-        let offset = 0
-
-        // Skip outer wrapper if present (field 1, length-delimited)
-        if (data[0] === 0x0a && data.length > 2) {
-            const outerLen = data[1]
-            if (outerLen === data.length - 2) {
-                // It's wrapped, skip the wrapper
-                offset = 2
-            }
-        }
-
-        while (offset < data.length - 2) {
-            const fieldTag = data[offset]
-            const wireType = fieldTag & 0x07
-
-            if (wireType !== 2) {
-                // Not length-delimited, skip
-                offset++
-                continue
-            }
-
-            const length = data[offset + 1]
-            const fieldStart = offset + 2
-            const fieldEnd = fieldStart + length
-
-            if (fieldEnd > data.length) {
-                console.warn('Protobuf field extends beyond data')
-                break
-            }
-
-            // Field 3 = ed25519 signature (0x1a = (3 << 3) | 2)
-            // Field 4 = ECDSA signature (0x22 = (4 << 3) | 2)
-            if (fieldTag === 0x1a && length === 64) {
-                return data.slice(fieldStart, fieldEnd)
-            }
-            if (fieldTag === 0x22) {
-                return data.slice(fieldStart, fieldEnd)
-            }
-
-            offset = fieldEnd
-        }
-
-        // Fallback: if data is large enough, try extracting last 64 bytes as signature
-        if (data.length >= 100) {
-            const sigStart = data.length - 64
-            return data.slice(sigStart)
-        }
-
-        return null
     }
 
     /**

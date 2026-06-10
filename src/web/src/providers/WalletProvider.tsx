@@ -133,10 +133,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           wallet_address: state.address,
-          wallet_type: state.type,
+          message: message,
           signature: signResult.signature,
-          public_key: signResult.publicKey,
-          key_type: signResult.keyType,
+          // wallet_type: state.type,
+          // public_key: signResult.publicKey,
+          // key_type: signResult.keyType,
         }),
       })
       if (!verifyResponse.ok) {

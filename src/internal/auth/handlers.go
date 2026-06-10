@@ -64,16 +64,17 @@ func (h *Handlers) VerifySignature(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.WalletAddress == "" || req.Signature == "" || req.PublicKey == "" {
-		respondError(w, http.StatusBadRequest, "wallet_address, signature, and public_key are required")
+	// if req.WalletAddress == "" || req.Signature == "" || req.PublicKey == "" {
+	if req.Signature == "" {
+		respondError(w, http.StatusBadRequest, "signature are required")
 		return
 	}
 
 	// Validate wallet type if provided (defaults to 'hedera' in service)
-	if req.WalletType != "" && req.WalletType != "hedera" {
-		respondError(w, http.StatusBadRequest, "wallet_type must be 'hedera'")
-		return
-	}
+	// if req.WalletType != "" && req.WalletType != "hedera" {
+	// 	respondError(w, http.StatusBadRequest, "wallet_type must be 'hedera'")
+	// 	return
+	// }
 
 	resp, err := h.service.VerifySignature(r.Context(), &req)
 	if err != nil {
