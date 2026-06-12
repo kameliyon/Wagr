@@ -86,6 +86,8 @@ var ErrAlreadyPaid = errors.New("entry fee already paid")
 var ErrPaymentInsufficient = errors.New("on-chain payment amount is less than required entry fee")
 var ErrLeagueAlreadyCancelled = errors.New("league is already cancelled")
 var ErrLeagueNotCancelled = errors.New("league is not cancelled")
+var ErrMissingOperatorKey = errors.New("operator key not configured for payout execution")
+var ErrInsufficientEscrow = errors.New("total payouts exceed escrow balance")
 
 // SetPaymentTokenRequest is the request payload for selecting a payment token
 type SetPaymentTokenRequest struct {

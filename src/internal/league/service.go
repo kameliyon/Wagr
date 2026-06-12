@@ -25,9 +25,10 @@ type Service struct {
 	hederaUSDCTokenID       string
 	hederaEscrowContractID  string
 	hederaNetwork           string
+	hederaClient            *HederaClient // nil in dev environments without an operator key
 }
 
-func NewService(db *pgxpool.Pool, platformService *fantasy.PlatformService, hederaUSDCTokenID, hederaEscrowContractID, hederaNetwork string) *Service {
+func NewService(db *pgxpool.Pool, platformService *fantasy.PlatformService, hederaUSDCTokenID, hederaEscrowContractID, hederaNetwork string, hederaClient *HederaClient) *Service {
 	if hederaNetwork == "" {
 		hederaNetwork = "testnet"
 	}
@@ -37,6 +38,7 @@ func NewService(db *pgxpool.Pool, platformService *fantasy.PlatformService, hede
 		hederaUSDCTokenID:      hederaUSDCTokenID,
 		hederaEscrowContractID: hederaEscrowContractID,
 		hederaNetwork:          hederaNetwork,
+		hederaClient:           hederaClient,
 	}
 }
 
