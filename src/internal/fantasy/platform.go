@@ -36,6 +36,16 @@ type FantasyPlatform interface {
 	// GetLeagueRosters fetches all rosters for a league
 	GetLeagueRosters(ctx context.Context, leagueID string) ([]PlatformRoster, error)
 
+	// GetLeagueMatchups fetches all team scores for a given scoring week
+	GetLeagueMatchups(ctx context.Context, leagueID string, week int) ([]PlatformMatchup, error)
+
+	// GetFinalStandings fetches final placements from the winners bracket.
+	// Only covers playoff bracket teams; losers bracket and non-bracket teams are not included.
+	GetFinalStandings(ctx context.Context, leagueID string) ([]PlatformStanding, error)
+
+	// GetCurrentWeek returns the current scoring week for the platform's primary sport
+	GetCurrentWeek(ctx context.Context) (int, error)
+
 	// RequiresAuth returns true if the platform requires OAuth or API key authentication
 	RequiresAuth() bool
 
