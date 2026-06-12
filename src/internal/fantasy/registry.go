@@ -114,6 +114,33 @@ func (s *PlatformService) GetLeagueRosters(ctx context.Context, platform Platfor
 	return p.GetLeagueRosters(ctx, leagueID)
 }
 
+// GetLeagueMatchups fetches all team scores for a given scoring week from a specific platform
+func (s *PlatformService) GetLeagueMatchups(ctx context.Context, platform PlatformType, leagueID string, week int) ([]PlatformMatchup, error) {
+	p, err := s.registry.Get(platform)
+	if err != nil {
+		return nil, err
+	}
+	return p.GetLeagueMatchups(ctx, leagueID, week)
+}
+
+// GetFinalStandings fetches winners bracket placements from a specific platform
+func (s *PlatformService) GetFinalStandings(ctx context.Context, platform PlatformType, leagueID string) ([]PlatformStanding, error) {
+	p, err := s.registry.Get(platform)
+	if err != nil {
+		return nil, err
+	}
+	return p.GetFinalStandings(ctx, leagueID)
+}
+
+// GetCurrentWeek returns the current scoring week for a specific platform
+func (s *PlatformService) GetCurrentWeek(ctx context.Context, platform PlatformType) (int, error) {
+	p, err := s.registry.Get(platform)
+	if err != nil {
+		return 0, err
+	}
+	return p.GetCurrentWeek(ctx)
+}
+
 // ListPlatforms returns all available platforms
 func (s *PlatformService) ListPlatforms() []PlatformType {
 	return s.registry.ListPlatforms()

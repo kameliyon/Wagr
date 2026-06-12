@@ -246,3 +246,8 @@ paket-files/
 # Environment variables (contains API keys)
 .env
 src/web/dist
+
+# Go build artifacts
+/gateway
+/oracle
+/bin/

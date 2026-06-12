@@ -4,7 +4,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -20,14 +19,6 @@ import (
 )
 
 func main() {
-	// if envPath := findEnvFile(); envPath != "" {
-	// 	if err := godotenv.Overload(envPath); err == nil {
-	// 		log.Printf("Loaded environment from %s", envPath)
-	// 	}
-	// } else {
-	// 	log.Println("No .env file found, using environment variables")
-	// }
-
 	err := godotenv.Load("../.env")
 	if err != nil {
 		log.Printf("No .env file found, using environment variables")
@@ -87,9 +78,25 @@ func main() {
 	hederaUSDCTokenID := os.Getenv("HEDERA_USDC_TOKEN_ID")
 	hederaEscrowContractID := os.Getenv("HEDERA_ESCROW_CONTRACT_ID")
 	hederaNetwork := os.Getenv("HEDERA_NETWORK")
-	leagueService := league.NewService(db.Pool, platformService, hederaUSDCTokenID, hederaEscrowContractID, hederaNetwork)
+
+	// HederaClient is optional: if the operator key is not configured, payout execution
+	// methods will return ErrMissingOperatorKey rather than panicking.
+	var hederaClient *league.HederaClient
+	if operatorID := os.Getenv("HEDERA_OPERATOR_ID"); operatorID != "" {
+		if operatorKey := os.Getenv("HEDERA_OPERATOR_KEY"); operatorKey != "" {
+			hc, err := league.NewHederaClient(hederaNetwork, operatorID, operatorKey, hederaEscrowContractID)
+			if err != nil {
+				log.Printf("Warning: failed to initialize Hedera operator client: %v", err)
+			} else {
+				hederaClient = hc
+				log.Println("Hedera operator client initialized")
+			}
+		}
+	}
+
+	leagueService := league.NewService(db.Pool, platformService, hederaUSDCTokenID, hederaEscrowContractID, hederaNetwork, hederaClient)
 	leagueHandlers := league.NewHandler(leagueService)
-	r.Route("/api/leagues", func(r chi.Router){
+	r.Route("/api/leagues", func(r chi.Router) {
 		leagueHandlers.RegisterRoutes(r, *authHandlers)
 	})
 
@@ -104,26 +111,7 @@ func main() {
 	log.Println("  - /api/fantasy/* (platform-agnostic)")
 	log.Println("  - /api/leagues/* (league management - authenticated)")
 	if err := http.ListenAndServe(":8080", r); err != nil {
-		log.Fatal(err)
+		log.Fatalf("HTTP server error: %v", err)
 	}
 }
 
-// findEnvFile walks up from the current directory to find a .env file
-// next to go.mod, so the app loads config regardless of which directory it's run from.
-func findEnvFile() string {
-	dir, err := os.Getwd()
-	if err != nil {
-		return ""
-	}
-	for {
-		candidate := filepath.Join(dir, ".env")
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return ""
-		}
-		dir = parent
-	}
-}

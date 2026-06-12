@@ -48,6 +48,20 @@ type PlatformRoster struct {
 	Metadata       map[string]string `json:"metadata,omitempty"`
 }
 
+// PlatformMatchup represents a single team's result in a weekly matchup
+type PlatformMatchup struct {
+	RosterID  int     `json:"roster_id"`
+	MatchupID int     `json:"matchup_id"` // teams sharing the same matchup_id played each other
+	Points    float64 `json:"points"`
+	Week      int     `json:"week"`
+}
+
+// PlatformStanding represents a team's final placement in the playoffs (winners bracket only)
+type PlatformStanding struct {
+	RosterID int `json:"roster_id"`
+	Place    int `json:"place"` // 1 = champion, 2 = runner-up, etc.
+}
+
 // PlatformCredentials stores authentication credentials for platforms that require auth
 type PlatformCredentials struct {
 	Platform     PlatformType `json:"platform"`

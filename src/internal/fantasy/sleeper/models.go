@@ -64,3 +64,26 @@ type Team struct {
 	Losses      int      `json:"losses"`
 	Ties        int      `json:"ties"`
 }
+
+// Matchup represents a weekly matchup result for a single team
+type Matchup struct {
+	MatchupID int     `json:"matchup_id"` // teams sharing the same matchup_id played each other
+	RosterID  int     `json:"roster_id"`
+	Points    float64 `json:"points"`
+}
+
+// BracketEntry represents a single game in a playoff bracket
+type BracketEntry struct {
+	Round     int  `json:"r"`
+	MatchupID int  `json:"m"`
+	Winner    int  `json:"w"` // roster_id of the winner
+	Loser     int  `json:"l"` // roster_id of the loser
+	Place     *int `json:"p"` // final placement of the winner (e.g. 1 = champion); non-nil only on placement-determining games
+}
+
+// NFLState represents the current state of the NFL season on Sleeper
+type NFLState struct {
+	Week       int    `json:"week"`
+	Season     string `json:"season"`
+	SeasonType string `json:"season_type"` // "pre", "regular", "post"
+}

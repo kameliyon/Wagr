@@ -151,6 +151,72 @@ func (c *Client) GetLeagueRosters(leagueID string) ([]Roster, error) {
 	return rosters, nil
 }
 
+// GetLeagueMatchups fetches all matchup results for a given week
+func (c *Client) GetLeagueMatchups(leagueID string, week int) ([]Matchup, error) {
+	url := fmt.Sprintf("%s/league/%s/matchups/%d", c.baseURL, leagueID, week)
+
+	resp, err := c.httpClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch matchups: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var matchups []Matchup
+	if err := json.NewDecoder(resp.Body).Decode(&matchups); err != nil {
+		return nil, fmt.Errorf("failed to decode matchups response: %w", err)
+	}
+
+	return matchups, nil
+}
+
+// GetWinnersBracket fetches the playoff winners bracket for a league
+func (c *Client) GetWinnersBracket(leagueID string) ([]BracketEntry, error) {
+	url := fmt.Sprintf("%s/league/%s/winners_bracket", c.baseURL, leagueID)
+
+	resp, err := c.httpClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch winners bracket: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var bracket []BracketEntry
+	if err := json.NewDecoder(resp.Body).Decode(&bracket); err != nil {
+		return nil, fmt.Errorf("failed to decode winners bracket response: %w", err)
+	}
+
+	return bracket, nil
+}
+
+// GetNFLState fetches the current NFL season/week state
+func (c *Client) GetNFLState() (*NFLState, error) {
+	url := fmt.Sprintf("%s/state/nfl", c.baseURL)
+
+	resp, err := c.httpClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch NFL state: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var state NFLState
+	if err := json.NewDecoder(resp.Body).Decode(&state); err != nil {
+		return nil, fmt.Errorf("failed to decode NFL state response: %w", err)
+	}
+
+	return &state, nil
+}
+
 // GetLeagueTeams fetches combined team data (rosters + user info) for a league
 func (c *Client) GetLeagueTeams(leagueID string) ([]Team, error) {
 	users, err := c.GetLeagueUsers(leagueID)

@@ -128,6 +128,64 @@ func (a *Adapter) GetLeagueRosters(ctx context.Context, leagueID string) ([]fant
 	return platformRosters, nil
 }
 
+// GetLeagueMatchups fetches all team scores for a given scoring week
+func (a *Adapter) GetLeagueMatchups(ctx context.Context, leagueID string, week int) ([]fantasy.PlatformMatchup, error) {
+	matchups, err := a.client.GetLeagueMatchups(leagueID, week)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]fantasy.PlatformMatchup, 0, len(matchups))
+	for _, m := range matchups {
+		result = append(result, fantasy.PlatformMatchup{
+			RosterID:  m.RosterID,
+			MatchupID: m.MatchupID,
+			Points:    m.Points,
+			Week:      week,
+		})
+	}
+	return result, nil
+}
+
+// GetFinalStandings fetches final placements from the winners bracket.
+// Each entry with a non-nil Place field determines a placement: the winner gets that place,
+// and the loser gets place+1 (e.g. championship game: winner=1st, loser=2nd).
+func (a *Adapter) GetFinalStandings(ctx context.Context, leagueID string) ([]fantasy.PlatformStanding, error) {
+	bracket, err := a.client.GetWinnersBracket(leagueID)
+	if err != nil {
+		return nil, err
+	}
+
+	standings := make([]fantasy.PlatformStanding, 0)
+	for _, entry := range bracket {
+		if entry.Place == nil {
+			continue
+		}
+		if entry.Winner != 0 {
+			standings = append(standings, fantasy.PlatformStanding{
+				RosterID: entry.Winner,
+				Place:    *entry.Place,
+			})
+		}
+		if entry.Loser != 0 {
+			standings = append(standings, fantasy.PlatformStanding{
+				RosterID: entry.Loser,
+				Place:    *entry.Place + 1,
+			})
+		}
+	}
+	return standings, nil
+}
+
+// GetCurrentWeek returns the current NFL scoring week from Sleeper's state endpoint
+func (a *Adapter) GetCurrentWeek(ctx context.Context) (int, error) {
+	state, err := a.client.GetNFLState()
+	if err != nil {
+		return 0, err
+	}
+	return state.Week, nil
+}
+
 // RequiresAuth returns false since Sleeper API doesn't require authentication
 func (a *Adapter) RequiresAuth() bool {
 	return false
