@@ -1,12 +1,9 @@
 package main
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -22,9 +19,6 @@ import (
 )
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	err := godotenv.Load("../.env")
 	if err != nil {
 		log.Printf("No .env file found, using environment variables")
@@ -111,29 +105,13 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 
-	// Start HTTP server in background so we can handle shutdown signals
-	server := &http.Server{Addr: ":8080", Handler: r}
-	go func() {
-		log.Println("Starting API Gateway on :8080")
-		log.Println("Routes registered:")
-		log.Println("  - /api/auth/* (authentication)")
-		log.Println("  - /api/fantasy/* (platform-agnostic)")
-		log.Println("  - /api/leagues/* (league management - authenticated)")
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("HTTP server error: %v", err)
-		}
-	}()
-
-	// Block until SIGINT or SIGTERM
-	<-ctx.Done()
-	stop()
-	log.Println("Shutting down server...")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Server shutdown error: %v", err)
+	log.Println("Starting API Gateway on :8080")
+	log.Println("Routes registered:")
+	log.Println("  - /api/auth/* (authentication)")
+	log.Println("  - /api/fantasy/* (platform-agnostic)")
+	log.Println("  - /api/leagues/* (league management - authenticated)")
+	if err := http.ListenAndServe(":8080", r); err != nil {
+		log.Fatalf("HTTP server error: %v", err)
 	}
-	log.Println("Server stopped")
 }
 
