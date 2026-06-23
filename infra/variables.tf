@@ -1,106 +1,118 @@
-variable "aws_region" {
-  description = "AWS region to deploy into"
+# ── Render ─────────────────────────────────────────────────────────────────────
+
+variable "render_api_key" {
+  description = "Render API key (Account > API Keys)"
   type        = string
-  default     = "us-east-1"
+  sensitive   = true
 }
+
+variable "render_owner_id" {
+  description = "Render workspace owner ID — 'usr-...' for personal, 'tea-...' for a team (Account Settings URL)"
+  type        = string
+}
+
+# ── Cloudflare ─────────────────────────────────────────────────────────────────
+
+variable "cloudflare_api_token" {
+  description = "Cloudflare API token scoped to 'Cloudflare Pages: Edit' and 'DNS: Edit'"
+  type        = string
+  sensitive   = true
+}
+
+variable "cloudflare_account_id" {
+  description = "Cloudflare account ID (visible in the dashboard URL and Overview page)"
+  type        = string
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID for wagrs.app (DNS > Zone ID in the dashboard)"
+  type        = string
+}
+
+# ── General ────────────────────────────────────────────────────────────────────
 
 variable "environment" {
-  description = "Deployment environment (dev, staging, prod)"
+  description = "Deployment environment label used in resource names"
   type        = string
-  default     = "dev"
+  default     = "production"
 }
 
-variable "app_image_tag" {
-  description = "Docker image tag to deploy (e.g. git SHA)"
+variable "render_region" {
+  description = "Render region for all services (oregon, frankfurt, ohio, singapore, virginia)"
   type        = string
-  default     = "latest"
+  default     = "oregon"
 }
 
-variable "vpc_cidr" {
-  type    = string
-  default = "10.0.0.0/16"
-}
-
-# --- ECS Gateway ---
-variable "gateway_cpu" {
-  type    = number
-  default = 512
-}
-
-variable "gateway_memory" {
-  type    = number
-  default = 1024
-}
-
-variable "gateway_desired_count" {
-  description = "Number of gateway tasks to run"
-  type        = number
-  default     = 1
-}
-
-# --- ECS Oracle ---
-variable "oracle_cpu" {
-  type    = number
-  default = 256
-}
-
-variable "oracle_memory" {
-  type    = number
-  default = 512
-}
-
-variable "oracle_job_timeout" {
-  description = "Max runtime for oracle jobs (Go duration string, e.g. '10m')"
+variable "github_repo_url" {
+  description = "Full GitHub repo URL, e.g. https://github.com/your-org/Wagr"
   type        = string
-  default     = "10m"
 }
 
-variable "oracle_weekly_schedule" {
-  description = "EventBridge cron for the weekly payout job (UTC)"
+variable "github_owner" {
+  description = "GitHub organization or username that owns the repo"
   type        = string
-  default     = "cron(0 9 ? * TUE *)"
 }
 
-variable "oracle_season_schedule" {
-  description = "EventBridge cron for the season-end payout job (UTC)"
+variable "github_repo_name" {
+  description = "GitHub repository name (without owner), e.g. Wagr"
   type        = string
-  default     = "cron(0 9 ? * WED *)"
+  default     = "Wagr"
 }
 
-# --- RDS ---
-variable "db_instance_class" {
-  type    = string
-  default = "db.t4g.micro"
+# ── Database ───────────────────────────────────────────────────────────────────
+
+variable "database_url" {
+  description = "Internal Database URL from Render PostgreSQL dashboard"
+  type        = string
+  sensitive   = true
 }
 
-variable "db_multi_az" {
-  description = "Enable Multi-AZ for RDS (recommended for prod)"
-  type        = bool
-  default     = false
+# ── App secrets ────────────────────────────────────────────────────────────────
+
+variable "jwt_secret" {
+  description = "JWT signing secret (min 32 random characters)"
+  type        = string
+  sensitive   = true
 }
 
-variable "db_name" {
-  type    = string
-  default = "wagr"
-}
-
-variable "db_username" {
-  type    = string
-  default = "wagr"
-}
-
-# --- Hedera ---
 variable "hedera_network" {
-  type    = string
-  default = "testnet"
+  description = "Hedera network: testnet or mainnet"
+  type        = string
+  default     = "testnet"
 }
 
 variable "hedera_usdc_token_id" {
-  type    = string
-  default = ""
+  description = "Hedera USDC token ID (e.g. 0.0.429274 on testnet)"
+  type        = string
 }
 
 variable "hedera_escrow_contract_id" {
-  type    = string
-  default = ""
+  description = "Deployed LeagueEscrow contract ID on Hedera (e.g. 0.0.9177767)"
+  type        = string
+}
+
+variable "hedera_operator_id" {
+  description = "Hedera operator account ID used for payout execution (e.g. 0.0.12345)"
+  type        = string
+  sensitive   = true
+}
+
+variable "hedera_operator_key" {
+  description = "Hedera operator private key in DER-encoded hex format"
+  type        = string
+  sensitive   = true
+}
+
+variable "oracle_job_timeout" {
+  description = "Maximum duration for oracle cron job runs (Go duration string, e.g. 15m)"
+  type        = string
+  default     = "15m"
+}
+
+# ── Frontend ───────────────────────────────────────────────────────────────────
+
+variable "vite_walletconnect_project_id" {
+  description = "WalletConnect Project ID from cloud.walletconnect.com"
+  type        = string
+  sensitive   = true
 }

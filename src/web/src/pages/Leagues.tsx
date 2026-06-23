@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useWallet } from '../hooks/useWallet'
 import type { League } from '../types/league'
 import ImportLeagueModal from '../components/ImportLeagueModal'
+import { apiUrl } from '../utils/api'
 import './Leagues.css'
 
 export default function Leagues() {
@@ -29,7 +30,7 @@ export default function Leagues() {
     setDeletingId(leagueId)
     setConfirmId(null)
     try {
-      const res = await fetch(`/api/leagues/${leagueId}`, {
+      const res = await fetch(apiUrl(`/api/leagues/${leagueId}`), {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -45,7 +46,7 @@ export default function Leagues() {
   const fetchLeagues = async () => {
     if (!token) return
     try {
-      const res = await fetch('/api/leagues/', {
+      const res = await fetch(apiUrl('/api/leagues/'), {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) {

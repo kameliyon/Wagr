@@ -1,30 +1,20 @@
-output "alb_dns_name" {
-  description = "Public DNS name of the load balancer — point your domain here"
-  value       = aws_lb.main.dns_name
+output "gateway_render_url" {
+  description = "Render web service URL (internal *.onrender.com URL)"
+  value       = render_web_service.gateway.url
 }
 
-output "ecr_repository_url" {
-  description = "ECR URL for docker push/pull"
-  value       = aws_ecr_repository.wagr.repository_url
+output "gateway_url" {
+  description = "Public API gateway URL via wagrs.app custom domain"
+  value       = "https://api.wagrs.app"
 }
 
-output "ecs_cluster_name" {
-  value = aws_ecs_cluster.main.name
+output "frontend_url" {
+  description = "Public frontend URL"
+  value       = "https://wagrs.app"
 }
 
-output "rds_endpoint" {
-  description = "RDS host (used as DB_HOST)"
-  value       = aws_db_instance.postgres.address
+output "pages_default_url" {
+  description = "Cloudflare Pages default subdomain URL (always works even before DNS cutover)"
+  value       = "https://${cloudflare_pages_project.wagr_frontend.name}.pages.dev"
 }
 
-output "push_commands" {
-  description = "Commands to build and push the Docker image"
-  value       = <<-EOT
-    aws ecr get-login-password --region ${var.aws_region} | \
-      docker login --username AWS --password-stdin ${aws_ecr_repository.wagr.repository_url}
-
-    docker build -t wagr .
-    docker tag wagr:latest ${aws_ecr_repository.wagr.repository_url}:latest
-    docker push ${aws_ecr_repository.wagr.repository_url}:latest
-  EOT
-}

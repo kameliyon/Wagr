@@ -4,6 +4,7 @@ import { useWallet } from '../hooks/useWallet'
 import { HederaStrategy } from '../strategies/HederaStrategy'
 import type { LeagueDetail, LeagueSettings, LeagueMember, PaymentToken, PaymentInstructions } from '../types/league'
 import './LeagueOverview.css'
+import { apiUrl } from '../utils/api'
 
 const formatDollars = (cents: number) =>
   `$${(cents / 100).toFixed(2).replace(/\.00$/, '')}`
@@ -81,8 +82,8 @@ export default function LeagueOverview() {
     const fetchAll = async () => {
       try {
         const [detailRes, settingsRes] = await Promise.all([
-          fetch(`/api/leagues/${leagueId}`, { headers: { Authorization: `Bearer ${token}` } }),
-          fetch(`/api/leagues/${leagueId}/settings`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(apiUrl(`/api/leagues/${leagueId}`), { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(apiUrl(`/api/leagues/${leagueId}/settings`), { headers: { Authorization: `Bearer ${token}` } }),
         ])
         if (detailRes.status === 403) {
           setNotMember(true)
@@ -126,7 +127,7 @@ export default function LeagueOverview() {
           : `Confirming on-chain… (${attempt}/${MAX_ATTEMPTS})`
       )
       if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, RETRY_MS))
-      res = await fetch(`/api/leagues/${leagueId}/confirm-payment`, {
+      res = await fetch(apiUrl(`/api/leagues/${leagueId}/confirm-payment`), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ transaction_id: txId }),
@@ -178,7 +179,7 @@ export default function LeagueOverview() {
     try {
       // Step 1: Get payment instructions from backend
       setPayStage('Fetching payment details…')
-      const payRes = await fetch(`/api/leagues/${leagueId}/pay`, {
+      const payRes = await fetch(apiUrl(`/api/leagues/${leagueId}/pay`), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -256,7 +257,7 @@ export default function LeagueOverview() {
           : `Confirming refund… (${attempt}/${MAX_ATTEMPTS})`
       )
       if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, RETRY_MS))
-      res = await fetch(`/api/leagues/${leagueId}/confirm-refund`, {
+      res = await fetch(apiUrl(`/api/leagues/${leagueId}/confirm-refund`), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ transaction_id: txId }),
@@ -295,7 +296,7 @@ export default function LeagueOverview() {
     if (!window.confirm('Cancel this league? This cannot be undone. Paid members will be able to claim refunds.')) return
     setCancelLoading(true)
     try {
-      const res = await fetch(`/api/leagues/${leagueId}/cancel`, {
+      const res = await fetch(apiUrl(`/api/leagues/${leagueId}/cancel`), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -316,7 +317,7 @@ export default function LeagueOverview() {
     if (!window.confirm('Reactivate this league? Members who claimed refunds will need to re-pay their entry fee.')) return
     setReactivateLoading(true)
     try {
-      const res = await fetch(`/api/leagues/${leagueId}/reactivate`, {
+      const res = await fetch(apiUrl(`/api/leagues/${leagueId}/reactivate`), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       })

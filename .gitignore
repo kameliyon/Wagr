@@ -251,3 +251,10 @@ src/web/dist
 /gateway
 /oracle
 /bin/
+
+# Terraform
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/terraform.tfvars
+infra/*.tfstate
+infra/*.tfstate.backup

@@ -5,6 +5,7 @@ import type { WalletType, WalletState, WalletStrategy, AvailableWallet } from '.
 import { HederaStrategy } from '../strategies/HederaStrategy'
 import { useWalletConfig } from './WalletConfig'
 import { getWalletDisplayName } from '../utils/walletConstants'
+import { apiUrl } from '../utils/api'
 
 interface User {
   id: string
@@ -92,7 +93,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const fetchCurrentUser = async (authToken: string) => {
     try {
-      const response = await fetch('/api/auth/me', {
+      const response = await fetch(apiUrl('/api/auth/me'), {
         headers: { Authorization: `Bearer ${authToken}` },
       })
       if (response.ok) {
@@ -113,7 +114,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const authenticateWith = useCallback(
     async (strategy: WalletStrategy, state: WalletState) => {
       // Step 1: Get nonce
-      const nonceResponse = await fetch('/api/auth/nonce', {
+      const nonceResponse = await fetch(apiUrl('/api/auth/nonce'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wallet_address: state.address, wallet_type: state.type }),
@@ -128,7 +129,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const signResult = await strategy.signMessage(message, state)
 
       // Step 3: Verify
-      const verifyResponse = await fetch('/api/auth/verify', {
+      const verifyResponse = await fetch(apiUrl('/api/auth/verify'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

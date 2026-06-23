@@ -4,6 +4,7 @@ import { useWallet } from '../hooks/useWallet'
 import type { LeagueSettings, PayoutEntry, BonusType } from '../types/league'
 import { PlaceSelect, CustomSelect } from '../components/PlaceSelect'
 import './LeagueSettings.css'
+import { apiUrl } from '../utils/api'
 
 const BONUS_TYPE_OPTIONS: { value: BonusType; label: string }[] = [
   { value: 'weekly_high_score',    label: 'Weekly High Score' },
@@ -79,7 +80,7 @@ export default function LeagueSettingsPage() {
     if (!token || !leagueId) return
     const fetchSettings = async () => {
       try {
-        const res = await fetch(`/api/leagues/${leagueId}/settings`, {
+        const res = await fetch(apiUrl(`/api/leagues/${leagueId}/settings`), {
           headers: { Authorization: `Bearer ${token}` },
         })
         if (!res.ok) throw new Error(`Failed to load settings (${res.status})`)
@@ -135,7 +136,7 @@ export default function LeagueSettingsPage() {
     setSaveError(null)
     setSaveSuccess(false)
     try {
-      const res = await fetch(`/api/leagues/${leagueId}/settings`, {
+      const res = await fetch(apiUrl(`/api/leagues/${leagueId}/settings`), {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ entry_fee_cents: entryFeeCents, payout_structure: payoutRows }),

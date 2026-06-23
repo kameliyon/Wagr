@@ -1,21 +1,34 @@
-aws_region   = "us-east-1"
-environment  = "dev"
-app_image_tag = "latest"
+# Copy this file to terraform.tfvars and fill in real values.
+# terraform.tfvars is gitignored — never commit it (it contains secrets).
 
-# Hedera
-hedera_network             = "testnet"
-hedera_usdc_token_id       = "0.0.XXXXX"
-hedera_escrow_contract_id  = "0.0.XXXXX"
+# ── Render ─────────────────────────────────────────────────────────────────────
+render_api_key  = "rnd_XXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+render_owner_id = "usr_XXXXXXXXXXXXXXXXXXXXXXXXXXXX"  # or "tea_..." for a team
 
-# Oracle schedules (UTC)
-# Weekly job: Tuesdays at 9am — after Monday Night Football scores are final
-oracle_weekly_schedule = "cron(0 9 ? * TUE *)"
-# Season-end job: Wednesdays at 9am — check for completed leagues weekly
-oracle_season_schedule = "cron(0 9 ? * WED *)"
+# ── Cloudflare ─────────────────────────────────────────────────────────────────
+cloudflare_api_token  = "your-cloudflare-api-token"
+cloudflare_account_id = "your-32-char-cloudflare-account-id"
+cloudflare_zone_id    = "your-32-char-zone-id-for-wagrs-app"
 
-# Database
-db_instance_class = "db.t4g.micro"
-db_multi_az       = false   # set true for prod
+# ── GitHub repo ────────────────────────────────────────────────────────────────
+github_repo_url  = "https://github.com/your-org/Wagr"
+github_owner     = "your-org"
+github_repo_name = "Wagr"
 
-# ECS
-gateway_desired_count = 1
+# ── General ────────────────────────────────────────────────────────────────────
+environment   = "production"
+render_region = "oregon"
+
+# ── App secrets ────────────────────────────────────────────────────────────────
+jwt_secret = "replace-with-32-plus-char-random-secret"
+
+hedera_network            = "testnet"
+hedera_usdc_token_id      = "0.0.429274"
+hedera_escrow_contract_id = "0.0.9177767"
+hedera_operator_id        = "0.0.XXXXX"
+hedera_operator_key       = "302e..."
+
+oracle_job_timeout = "15m"
+
+# ── Frontend ───────────────────────────────────────────────────────────────────
+vite_walletconnect_project_id = "your-walletconnect-project-id"
