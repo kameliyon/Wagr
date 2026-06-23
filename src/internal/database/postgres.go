@@ -11,16 +11,22 @@ import (
 
 // Config holds database configuration
 type Config struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
-	DBName   string
-	SSLMode  string
+	// DatabaseURL takes precedence over individual fields when set (e.g. on Render).
+	DatabaseURL string
+	Host        string
+	Port        string
+	User        string
+	Password    string
+	DBName      string
+	SSLMode     string
 }
 
-// DefaultConfig returns configuration from environment variables with defaults
+// DefaultConfig returns configuration from environment variables with defaults.
+// DATABASE_URL takes precedence over individual DB_* vars when set.
 func DefaultConfig() Config {
+	if url := os.Getenv("DATABASE_URL"); url != "" {
+		return Config{DatabaseURL: url}
+	}
 	return Config{
 		Host:     getEnv("DB_HOST", "localhost"),
 		Port:     getEnv("DB_PORT", "5432"),
@@ -31,8 +37,11 @@ func DefaultConfig() Config {
 	}
 }
 
-// ConnectionString returns the PostgreSQL connection string
+// ConnectionString returns the PostgreSQL connection string.
 func (c Config) ConnectionString() string {
+	if c.DatabaseURL != "" {
+		return c.DatabaseURL
+	}
 	return fmt.Sprintf(
 		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
 		c.User, c.Password, c.Host, c.Port, c.DBName, c.SSLMode,

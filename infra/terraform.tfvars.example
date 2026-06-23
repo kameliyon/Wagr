@@ -1,0 +1,34 @@
+# Copy this file to terraform.tfvars and fill in real values.
+# terraform.tfvars is gitignored — never commit it (it contains secrets).
+
+# ── Render ─────────────────────────────────────────────────────────────────────
+render_api_key  = "rnd_XXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+render_owner_id = "usr_XXXXXXXXXXXXXXXXXXXXXXXXXXXX"  # or "tea_..." for a team
+
+# ── Cloudflare ─────────────────────────────────────────────────────────────────
+cloudflare_api_token  = "your-cloudflare-api-token"
+cloudflare_account_id = "your-32-char-cloudflare-account-id"
+cloudflare_zone_id    = "your-32-char-zone-id-for-wagrs-app"
+
+# ── GitHub repo ────────────────────────────────────────────────────────────────
+github_repo_url  = "https://github.com/your-org/Wagr"
+github_owner     = "your-org"
+github_repo_name = "Wagr"
+
+# ── General ────────────────────────────────────────────────────────────────────
+environment   = "production"
+render_region = "oregon"
+
+# ── App secrets ────────────────────────────────────────────────────────────────
+jwt_secret = "replace-with-32-plus-char-random-secret"
+
+hedera_network            = "testnet"
+hedera_usdc_token_id      = "0.0.429274"
+hedera_escrow_contract_id = "0.0.9177767"
+hedera_operator_id        = "0.0.XXXXX"
+hedera_operator_key       = "302e..."
+
+oracle_job_timeout = "15m"
+
+# ── Frontend ───────────────────────────────────────────────────────────────────
+vite_walletconnect_project_id = "your-walletconnect-project-id"

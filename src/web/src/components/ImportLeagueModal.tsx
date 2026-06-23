@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useWallet } from '../hooks/useWallet'
 import type { PlatformLeague, PlatformProfile, League } from '../types/league'
 import './ImportLeagueModal.css'
+import { apiUrl } from '../utils/api'
 
 interface Props {
   isOpen: boolean
@@ -42,7 +43,7 @@ export default function ImportLeagueModal({ isOpen, onClose, onImported, existin
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/leagues/link-platform', {
+      const res = await fetch(apiUrl('/api/leagues/link-platform'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -59,7 +60,7 @@ export default function ImportLeagueModal({ isOpen, onClose, onImported, existin
 
       // Fetch leagues for this platform user
       const leaguesRes = await fetch(
-        `/api/fantasy/sleeper/user/${data.platform_user_id}/leagues?sport=nfl&season=2025`,
+        apiUrl(`/api/fantasy/sleeper/user/${data.platform_user_id}/leagues?sport=nfl&season=2025`),
         { headers: { Authorization: `Bearer ${token}` } }
       )
       if (!leaguesRes.ok) {
@@ -86,7 +87,7 @@ export default function ImportLeagueModal({ isOpen, onClose, onImported, existin
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/leagues/import', {
+      const res = await fetch(apiUrl('/api/leagues/import'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

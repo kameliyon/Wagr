@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -34,6 +35,11 @@ func main() {
 	defer db.Close()
 	log.Println("Connected to database")
 
+	if err := database.Migrate(db.Pool); err != nil {
+		log.Fatalf("Database migration failed: %v", err)
+	}
+	log.Println("Database migrations applied")
+
 	// Initialize platform registry
 	registry := fantasy.NewRegistry()
 
@@ -54,8 +60,12 @@ func main() {
 	r.Use(middleware.Timeout(30 * time.Second))
 
 	// CORS configuration for frontend
+	corsOrigins := []string{"http://localhost:5173", "http://localhost:3000"}
+	if envOrigins := os.Getenv("CORS_ALLOWED_ORIGINS"); envOrigins != "" {
+		corsOrigins = strings.Split(envOrigins, ",")
+	}
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173", "http://localhost:3000"},
+		AllowedOrigins:   corsOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		ExposedHeaders:   []string{"Link"},
@@ -105,12 +115,16 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 
-	log.Println("Starting API Gateway on :8080")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Printf("Starting API Gateway on :%s", port)
 	log.Println("Routes registered:")
 	log.Println("  - /api/auth/* (authentication)")
 	log.Println("  - /api/fantasy/* (platform-agnostic)")
 	log.Println("  - /api/leagues/* (league management - authenticated)")
-	if err := http.ListenAndServe(":8080", r); err != nil {
+	if err := http.ListenAndServe(":"+port, r); err != nil {
 		log.Fatalf("HTTP server error: %v", err)
 	}
 }
