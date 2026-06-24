@@ -41,6 +41,7 @@ resource "render_web_service" "gateway" {
   })
 
   health_check_path = "/health"
+  custom_domains    = [{ name = "api.wagrs.app" }]
 }
 
 # ── Oracle cron jobs ───────────────────────────────────────────────────────────
