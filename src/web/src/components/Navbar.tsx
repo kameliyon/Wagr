@@ -37,7 +37,7 @@ export default function Navbar() {
       <div className="navbar-content">
         <Link to="/" className="navbar-brand">
           <LogoMark />
-          <span>WAGR</span>
+          <span>WAGRS</span>
         </Link>
 
         <div className="navbar-right">

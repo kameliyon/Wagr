@@ -552,7 +552,7 @@ export default function LeagueOverview() {
                 <th>Team</th>
                 <th>Record</th>
                 <th>Points</th>
-                <th>Wagr</th>
+                <th>Wagrs</th>
                 <th>Token</th>
                 <th>Payment</th>
               </tr>
@@ -748,7 +748,7 @@ export default function LeagueOverview() {
       {isCommissioner && (
         <div className="invite-banner">
           <p>
-            Share the invite link to let your league-mates connect their Wagr wallets and track
+            Share the invite link to let your league-mates connect their Wagrs wallets and track
             payment status.
           </p>
         </div>
