@@ -79,7 +79,7 @@ export class HederaStrategy implements WalletStrategy {
             // Create connector
             this.connector = new DAppConnector(
                 {
-                    name: 'WAGR',
+                    name: 'WAGRS',
                     description: 'Web3 Fantasy Sports Payment Management',
                     url: window.location.origin,
                     icons: ['https://wagr.app/icon.png'],
@@ -146,7 +146,7 @@ export class HederaStrategy implements WalletStrategy {
 
             // Initialize and open modal
             await this.connector.init({
-                name: 'WAGR',
+                name: 'WAGRS',
                 description: 'Web3 Fantasy Sports Payment Management',
                 url: window.location.origin,
                 icons: ['https://wagr.app/icon.png'],
@@ -308,7 +308,7 @@ export class HederaStrategy implements WalletStrategy {
      * TODO: implement using Hedera SDK CryptoTransferTransaction via WalletConnect signer.
      */
     async transferHBAR(params: TransferHBARParams): Promise<PaymentResult> {
-        console.log('[WAGR Payment Stub] transferHBAR called', params)
+        console.log('[WAGRS Payment Stub] transferHBAR called', params)
         // Stub returns a mock transaction ID — no real transaction is submitted.
         const mockTxId = `0.0.stub@${Date.now()}.000000000`
         return { transactionId: mockTxId, status: 'stub' }
@@ -323,7 +323,7 @@ export class HederaStrategy implements WalletStrategy {
      * pre-associate all accounts before transfers are attempted.
      */
     async transferHTS(params: TransferHTSParams): Promise<PaymentResult> {
-        console.log('[WAGR Payment Stub] transferHTS called', params)
+        console.log('[WAGRS Payment Stub] transferHTS called', params)
         const mockTxId = `0.0.stub@${Date.now()}.000000000`
         return { transactionId: mockTxId, status: 'stub' }
     }
@@ -338,7 +338,7 @@ export class HederaStrategy implements WalletStrategy {
      * @returns The Hedera transaction ID of the contract call
      */
     async payEntryFeeUSDC(params: {
-        leagueId: string      // WAGR league UUID
+        leagueId: string      // WAGRS league UUID
         amountUSDC: number    // 6-decimal USDC units (e.g. $50.00 = 50_000_000)
         contractId: string    // Hedera contract ID, e.g. "0.0.12345"
         usdcTokenId: string   // Hedera token ID, e.g. "0.0.456858"
