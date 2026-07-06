@@ -245,6 +245,34 @@
   font-size: 0.85rem !important;
 }
 
+/* ── Wallet picker (wizard step 1) ────────────────────────── */
+
+.wizard-wallet-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+}
+
+.picker-label {
+  font-size: 0.85rem !important;
+  color: var(--text-secondary) !important;
+  margin-bottom: 0.1rem !important;
+}
+
+.wizard-wallet-option {
+  width: 100%;
+  text-align: center;
+  font-weight: 500;
+}
+
+.wizard-wallet-cancel {
+  width: 100%;
+  text-align: center;
+  opacity: 0.6;
+  margin-top: 0.25rem;
+}
+
 /* ── Dashboard (authenticated) ────────────────────────────── */
 
 /* Welcome banner */

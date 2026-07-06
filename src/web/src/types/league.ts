@@ -87,10 +87,17 @@ export interface PayStubResponse {
 }
 
 export interface PaymentInstructions {
-  contract_id: string       // Hedera contract ID, e.g. "0.0.5555555"
-  usdc_token_id: string     // Hedera token ID, e.g. "0.0.456858"
-  amount_usdc: number       // 6-decimal USDC units (e.g. $50.00 = 50_000_000)
-  amount_formatted: string  // e.g. "$50.00 USDC"
+  contract_id: string
+  contract_evm_address: string
+  token: 'usdc' | 'hbar'
+  // USDC-specific
+  usdc_token_id?: string
+  usdc_evm_address?: string
+  amount_usdc?: number        // 6-decimal USDC units (e.g. $50.00 = 50_000_000)
+  // HBAR-specific
+  amount_weibars?: string     // BigInt string; 1 HBAR = 10^18 weibars
+  // Common
+  amount_formatted: string    // e.g. "$50.00 USDC" or "50.42 HBAR (~$50.00)"
 }
 
 export interface LeagueDetail {

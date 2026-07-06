@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { useWallet } from '../hooks/useWallet'
 import ImportLeagueModal from '../components/ImportLeagueModal'
 import type { League } from '../types/league'
+import type { WalletType } from '../types/wallet'
+import { getWalletDisplayName } from '../utils/walletConstants'
 import { apiUrl } from '../utils/api'
 import './Home.css'
 
@@ -39,13 +41,14 @@ function WizardStepper({ activeStep }: { activeStep: number }) {
 export default function Home() {
   const {
     isAuthenticated, isConnected, isConnecting, isAuthenticating,
-    availableWallets, connect, authenticate, error,
+    availableWallets, connect, disconnect, authenticate, error,
     user, accountId, network, token,
   } = useWallet()
 
   const [leagues, setLeagues] = useState<League[]>([])
   const [leaguesLoading, setLeaguesLoading] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showWalletPicker, setShowWalletPicker] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated || !token) return
@@ -57,10 +60,9 @@ export default function Home() {
       .finally(() => setLeaguesLoading(false))
   }, [isAuthenticated, token])
 
-  const handleConnect = () => {
-    if (availableWallets.length >= 1) {
-      connect(availableWallets[0].type, availableWallets[0].name)
-    }
+  const handleConnectWallet = (type: WalletType, walletName: string) => {
+    setShowWalletPicker(false)
+    connect(type, walletName)
   }
 
   const handleImported = () => {
@@ -189,25 +191,54 @@ export default function Home() {
                 <h2>Connect Your Wallet</h2>
                 <p>
                   WAGRS uses the Hedera network for secure, low-fee payments.
-                  Connect with <strong>HashPack</strong> — via browser extension or
-                  mobile app — to get started.
+                  Connect with <strong>HashPack</strong>, <strong>MetaMask</strong>,
+                  or <strong>Coinbase Wallet</strong> to get started.
                 </p>
                 <ul className="features">
                   <li>Secure, transparent entry fee collection</li>
                   <li>Automated payouts via smart contracts</li>
                   <li>Low transaction fees on Hedera Network</li>
                 </ul>
-                <button
-                  className="btn-primary wizard-btn"
-                  onClick={handleConnect}
-                  disabled={isConnecting || isAuthenticating}
-                >
-                  {isConnecting
-                    ? 'Connecting…'
-                    : isAuthenticating
-                    ? 'Waiting for signature…'
-                    : 'Connect Wallet'}
-                </button>
+
+                {isConnecting || isAuthenticating ? (
+                  <div className="wizard-wallet-picker">
+                    <p className="picker-label">
+                      {isConnecting ? 'Connecting — approve in your wallet…' : 'Waiting for signature…'}
+                    </p>
+                    <button
+                      className="btn-secondary wizard-wallet-cancel"
+                      onClick={() => { disconnect(); setShowWalletPicker(false) }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : showWalletPicker ? (
+                  <div className="wizard-wallet-picker">
+                    <p className="picker-label">Choose a wallet:</p>
+                    {availableWallets.map((wallet) => (
+                      <button
+                        key={`${wallet.type}-${wallet.name}`}
+                        className="btn-secondary wizard-wallet-option"
+                        onClick={() => handleConnectWallet(wallet.type, wallet.name)}
+                      >
+                        {getWalletDisplayName(wallet.name)}
+                      </button>
+                    ))}
+                    <button
+                      className="btn-secondary wizard-wallet-cancel"
+                      onClick={() => setShowWalletPicker(false)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="btn-primary wizard-btn"
+                    onClick={() => setShowWalletPicker(true)}
+                  >
+                    Connect Wallet
+                  </button>
+                )}
                 {error && <p className="wizard-error">{error}</p>}
               </div>
             )}

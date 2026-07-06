@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react'
 import type { WalletType, WalletState, WalletStrategy, AvailableWallet } from '../types/wallet'
 import { HederaStrategy } from '../strategies/HederaStrategy'
+import { EVMStrategy } from '../strategies/EVMStrategy'
 import { useWalletConfig } from './WalletConfig'
 import { getWalletDisplayName } from '../utils/walletConstants'
 import { apiUrl } from '../utils/api'
@@ -48,6 +49,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // Initialize strategies
   const [strategies] = useState<Record<WalletType, WalletStrategy>>({
     hedera: new HederaStrategy(config.walletConnectProjectId),
+    evm: new EVMStrategy(config.walletConnectProjectId),
   })
 
   // Detect available wallets on mount
@@ -136,9 +138,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           wallet_address: state.address,
           message: message,
           signature: signResult.signature,
-          // wallet_type: state.type,
-          // public_key: signResult.publicKey,
-          // key_type: signResult.keyType,
+          wallet_type: state.type,
         }),
       })
       if (!verifyResponse.ok) {
@@ -176,7 +176,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setIsConnected(true)
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to connect wallet'
-        setError(message)
+        // User dismissed the modal — not an error worth displaying
+        if (message !== 'Connection cancelled') {
+          setError(message)
+        }
         throw err
       } finally {
         setIsConnecting(false)
@@ -223,8 +226,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Clear state
+    // Clear all state — including isConnecting/isAuthenticating so this
+    // doubles as a Cancel when the user dismisses a connection modal
     localStorage.removeItem('wagr_token')
+    setIsConnecting(false)
+    setIsAuthenticating(false)
     setIsConnected(false)
     setWalletState(null)
     setActiveStrategy(null)

@@ -75,34 +75,46 @@ console.log(`Bytecode size: ${fullBytecode.length} bytes`)
 
 // Upload bytecode in chunks (Hedera max file content per tx = 4096 bytes)
 const CHUNK = 4096
+const totalChunks = Math.ceil(fullBytecode.length / CHUNK)
+console.log(`Uploading bytecode in ${totalChunks} chunk(s)...`)
+
+console.log('Step 1/3: Creating bytecode file...')
 const fileCreateTx = await new FileCreateTransaction()
   .setKeys([parsedKey])
   .setContents(fullBytecode.slice(0, CHUNK))
-  .setMaxTransactionFee(new Hbar(5))
+  .setMaxTransactionFee(new Hbar(50))
   .execute(client)
 
 const fileReceipt = await fileCreateTx.getReceipt(client)
 const fileId = fileReceipt.fileId
 console.log(`Bytecode file: ${fileId}`)
 
+let chunkNum = 1
 for (let offset = CHUNK; offset < fullBytecode.length; offset += CHUNK) {
+  chunkNum++
+  console.log(`Step 1/${totalChunks} append chunk ${chunkNum}/${totalChunks}...`)
   const chunk = fullBytecode.slice(offset, Math.min(offset + CHUNK, fullBytecode.length))
   await (
     await new FileAppendTransaction()
       .setFileId(fileId)
       .setContents(chunk)
-      .setMaxTransactionFee(new Hbar(5))
+      .setMaxTransactionFee(new Hbar(50))
       .execute(client)
   ).getReceipt(client)
 }
 
+// The constructor calls associateToken on the HTS precompile (~600K gas).
+// Gas limit determines the fee estimate: keep it low enough that
+// gasLimit × gasPrice stays under maxTransactionFee.
+console.log('Step 2/3: Creating contract...')
 const contractTx = await new ContractCreateTransaction()
   .setBytecodeFileId(fileId)
   .setConstructorParameters(new ContractFunctionParameters().addAddress(usdcEvmAddress))
-  .setGas(2_000_000)
-  .setMaxTransactionFee(new Hbar(20))
+  .setGas(900_000)
+  .setMaxTransactionFee(new Hbar(1000))
   .execute(client)
 
+console.log('Step 3/3: Getting receipt...')
 const contractReceipt = await contractTx.getReceipt(client)
 const contractId = contractReceipt.contractId
 

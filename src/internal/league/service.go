@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"strings"
 	"time"
@@ -551,18 +552,20 @@ func (s *Service) SetPaymentToken(ctx context.Context, leagueID, userID, token s
 	return nil
 }
 
-// InitiatePayment returns USDC escrow payment instructions for the calling user's membership
+// InitiatePayment returns escrow payment instructions for the calling user's membership.
+// The instructions are USDC or HBAR depending on the member's chosen payment token.
 func (s *Service) InitiatePayment(ctx context.Context, leagueID, userID string) (*PaymentInstructions, error) {
 	var entryFeeCents int64
 	var paymentStatus string
+	var paymentToken string
 
 	err := s.db.QueryRow(ctx, `
-		SELECT l.entry_fee_cents, lm.payment_status
+		SELECT l.entry_fee_cents, lm.payment_status, COALESCE(lm.payment_token, 'usdc')
 		FROM league_members lm
 		JOIN leagues l ON l.id = lm.league_id
 		JOIN platform_profiles pp ON pp.platform = lm.platform AND pp.platform_user_id = lm.platform_user_id
 		WHERE lm.league_id = $1 AND pp.user_id = $2
-	`, leagueID, userID).Scan(&entryFeeCents, &paymentStatus)
+	`, leagueID, userID).Scan(&entryFeeCents, &paymentStatus, &paymentToken)
 
 	if err == pgx.ErrNoRows {
 		return nil, ErrNotLeagueMember
@@ -575,32 +578,73 @@ func (s *Service) InitiatePayment(ctx context.Context, leagueID, userID string) 
 		return nil, ErrAlreadyPaid
 	}
 
-	// entry_fee_cents → 6-decimal USDC: $50.00 = 5000 cents = 50_000_000 micro-USDC
-	amountUSDC := entryFeeCents * 10_000
+	contractEvm, err := hederaAccountToEVM(s.hederaEscrowContractID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid escrow contract ID: %w", err)
+	}
+	contractEvmHex := "0x" + hex.EncodeToString(contractEvm[:])
 	dollars := float64(entryFeeCents) / 100.0
 
+	if paymentToken == "hbar" {
+		rate, err := s.fetchHBARExchangeRate(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch HBAR exchange rate: %w", err)
+		}
+		// weibars = entryFeeCents * hbarEquivalent * 10^18 / centEquivalent
+		big10e18 := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+		num := new(big.Int).Mul(big.NewInt(entryFeeCents), big.NewInt(rate.HBAREquivalent))
+		num.Mul(num, big10e18)
+		weibars := new(big.Int).Div(num, big.NewInt(rate.CentEquivalent))
+
+		// Human-readable HBAR amount with 2 decimal places
+		hbarNum := entryFeeCents * rate.HBAREquivalent
+		hbarWhole := hbarNum / rate.CentEquivalent
+		hbarFrac := (hbarNum % rate.CentEquivalent) * 100 / rate.CentEquivalent
+
+		return &PaymentInstructions{
+			ContractID:         s.hederaEscrowContractID,
+			ContractEvmAddress: contractEvmHex,
+			Token:              "hbar",
+			AmountWeibars:      weibars.String(),
+			AmountFormatted:    fmt.Sprintf("%d.%02d HBAR (~$%.2f)", hbarWhole, hbarFrac, dollars),
+		}, nil
+	}
+
+	// Default: USDC
+	// entry_fee_cents → 6-decimal USDC: $50.00 = 5000 cents = 50_000_000 micro-USDC
+	amountUSDC := entryFeeCents * 10_000
+	usdcEvm, err := hederaAccountToEVM(s.hederaUSDCTokenID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid USDC token ID: %w", err)
+	}
+
 	return &PaymentInstructions{
-		ContractID:      s.hederaEscrowContractID,
-		USDCTokenID:     s.hederaUSDCTokenID,
-		AmountUSDC:      amountUSDC,
-		AmountFormatted: fmt.Sprintf("$%.2f USDC", dollars),
+		ContractID:         s.hederaEscrowContractID,
+		ContractEvmAddress: contractEvmHex,
+		Token:              "usdc",
+		USDCTokenID:        s.hederaUSDCTokenID,
+		USDCEvmAddress:     "0x" + hex.EncodeToString(usdcEvm[:]),
+		AmountUSDC:         amountUSDC,
+		AmountFormatted:    fmt.Sprintf("$%.2f USDC", dollars),
 	}, nil
 }
 
-// ConfirmPayment verifies the on-chain payment via Mirror Node and marks the member as paid
+// ConfirmPayment verifies the on-chain payment via Mirror Node and marks the member as paid.
 func (s *Service) ConfirmPayment(ctx context.Context, leagueID, userID, transactionID string) error {
 	var walletAddress string
 	var entryFeeCents int64
 	var paymentStatus string
+	var paymentToken string
 
 	err := s.db.QueryRow(ctx, `
-		SELECT COALESCE(u.wallet_address, lm.wallet_address, ''), l.entry_fee_cents, lm.payment_status
+		SELECT COALESCE(u.wallet_address, lm.wallet_address, ''), l.entry_fee_cents, lm.payment_status,
+		       COALESCE(lm.payment_token, 'usdc')
 		FROM league_members lm
 		JOIN leagues l ON l.id = lm.league_id
 		JOIN platform_profiles pp ON pp.platform = lm.platform AND pp.platform_user_id = lm.platform_user_id
 		LEFT JOIN users u ON u.id = pp.user_id
 		WHERE lm.league_id = $1 AND pp.user_id = $2
-	`, leagueID, userID).Scan(&walletAddress, &entryFeeCents, &paymentStatus)
+	`, leagueID, userID).Scan(&walletAddress, &entryFeeCents, &paymentStatus, &paymentToken)
 
 	if err == pgx.ErrNoRows {
 		return ErrNotLeagueMember
@@ -628,17 +672,40 @@ func (s *Service) ConfirmPayment(ctx context.Context, leagueID, userID, transact
 		return fmt.Errorf("invalid contract ID: %w", err)
 	}
 
-	callData := encodePaymentsCall(leagueIdBytes, evmAddr)
-
-	paid, err := s.readContractPayment(ctx, contractEVM, callData)
-	if err != nil {
-		return fmt.Errorf("failed to verify on-chain payment: %w", err)
-	}
-
-	// entry_fee_cents * 10_000 = required 6-decimal USDC amount
-	requiredUSDC := entryFeeCents * 10_000
-	if paid < requiredUSDC {
-		return ErrPaymentInsufficient
+	if paymentToken == "hbar" {
+		callData := encodeHbarPaymentsCall(leagueIdBytes, evmAddr)
+		paidWeibars, err := s.readContractUint256(ctx, contractEVM, callData)
+		if err != nil {
+			return fmt.Errorf("failed to verify on-chain HBAR payment: %w", err)
+		}
+		// Compute the required weibars with a 5% tolerance for exchange-rate movement
+		// between when the user initiated and when they confirmed.
+		rate, rateErr := s.fetchHBARExchangeRate(ctx)
+		if rateErr == nil && rate.CentEquivalent > 0 {
+			big10e18 := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+			num := new(big.Int).Mul(big.NewInt(entryFeeCents), big.NewInt(rate.HBAREquivalent))
+			num.Mul(num, big10e18)
+			required := new(big.Int).Div(num, big.NewInt(rate.CentEquivalent))
+			// minimum = required * 95 / 100
+			min95 := new(big.Int).Mul(required, big.NewInt(95))
+			min95.Div(min95, big.NewInt(100))
+			if paidWeibars.Cmp(min95) < 0 {
+				return ErrPaymentInsufficient
+			}
+		} else if paidWeibars.Sign() == 0 {
+			// Cannot fetch rate; fall back to checking that any payment was made
+			return ErrPaymentInsufficient
+		}
+	} else {
+		callData := encodePaymentsCall(leagueIdBytes, evmAddr)
+		paid, err := s.readContractPayment(ctx, contractEVM, callData)
+		if err != nil {
+			return fmt.Errorf("failed to verify on-chain payment: %w", err)
+		}
+		// entry_fee_cents * 10_000 = required 6-decimal USDC amount
+		if paid < entryFeeCents*10_000 {
+			return ErrPaymentInsufficient
+		}
 	}
 
 	_, err = s.db.Exec(ctx, `
@@ -660,7 +727,21 @@ func (s *Service) ConfirmPayment(ctx context.Context, leagueID, userID, transact
 // getAccountEVMAddress fetches the canonical EVM address for a Hedera account from the Mirror Node.
 // ECDSA (HashPack) accounts have a key-derived alias that differs from the long-zero format;
 // using the Mirror Node ensures msg.sender in contracts matches the lookup address.
+// EVM wallet addresses (0x...) are returned as-is without a Mirror Node lookup.
 func (s *Service) getAccountEVMAddress(ctx context.Context, accountID string) ([20]byte, error) {
+	if strings.HasPrefix(accountID, "0x") {
+		evmHex := strings.TrimPrefix(accountID, "0x")
+		if len(evmHex) == 40 {
+			addrBytes, err := hex.DecodeString(evmHex)
+			if err == nil {
+				var addr [20]byte
+				copy(addr[:], addrBytes)
+				return addr, nil
+			}
+		}
+		return [20]byte{}, fmt.Errorf("invalid EVM address: %q", accountID)
+	}
+
 	mirrorURL := fmt.Sprintf("https://%s.mirrornode.hedera.com/api/v1/accounts/%s", s.hederaNetwork, accountID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, mirrorURL, nil)
 	if err != nil {
@@ -740,6 +821,115 @@ func encodePaymentsCall(leagueId [32]byte, member [20]byte) []byte {
 	callData = append(callData, leagueId[:]...)
 	callData = append(callData, addrPadded[:]...)
 	return callData
+}
+
+// encodeHbarPaymentsCall ABI-encodes a call to hbarPayments(bytes32,address)
+func encodeHbarPaymentsCall(leagueId [32]byte, member [20]byte) []byte {
+	h := sha3.NewLegacyKeccak256()
+	h.Write([]byte("hbarPayments(bytes32,address)"))
+	selector := h.Sum(nil)[:4]
+
+	var addrPadded [32]byte
+	copy(addrPadded[12:], member[:])
+
+	callData := make([]byte, 0, 68)
+	callData = append(callData, selector...)
+	callData = append(callData, leagueId[:]...)
+	callData = append(callData, addrPadded[:]...)
+	return callData
+}
+
+type hbarExchangeRate struct {
+	HBAREquivalent int64 `json:"hbar_equivalent"`
+	CentEquivalent int64 `json:"cent_equivalent"`
+}
+
+// fetchHBARExchangeRate returns the current HBAR/USD rate from the Hedera Mirror Node.
+// The rate is expressed as: HBAREquivalent HBAR = CentEquivalent USD cents.
+func (s *Service) fetchHBARExchangeRate(ctx context.Context) (hbarExchangeRate, error) {
+	var payload struct {
+		CurrentRate hbarExchangeRate `json:"current_rate"`
+	}
+
+	url := fmt.Sprintf("https://%s.mirrornode.hedera.com/api/v1/network/exchangerate", s.hederaNetwork)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return hbarExchangeRate{}, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return hbarExchangeRate{}, fmt.Errorf("exchange rate fetch failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return hbarExchangeRate{}, fmt.Errorf("exchange rate API returned %d: %s", resp.StatusCode, body)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return hbarExchangeRate{}, fmt.Errorf("failed to decode exchange rate: %w", err)
+	}
+	if payload.CurrentRate.CentEquivalent == 0 {
+		return hbarExchangeRate{}, fmt.Errorf("exchange rate returned zero cent_equivalent")
+	}
+	return payload.CurrentRate, nil
+}
+
+// readContractUint256 calls the Mirror Node to read a uint256 return value from the escrow contract.
+func (s *Service) readContractUint256(ctx context.Context, contractAddr [20]byte, callData []byte) (*big.Int, error) {
+	mirrorNodeURL := fmt.Sprintf("https://%s.mirrornode.hedera.com", s.hederaNetwork)
+
+	type contractCallReq struct {
+		Block    string `json:"block"`
+		Data     string `json:"data"`
+		To       string `json:"to"`
+		Estimate bool   `json:"estimate"`
+	}
+
+	reqBody := contractCallReq{
+		Block:    "latest",
+		Data:     "0x" + hex.EncodeToString(callData),
+		To:       "0x" + hex.EncodeToString(contractAddr[:]),
+		Estimate: false,
+	}
+	reqJSON, _ := json.Marshal(reqBody)
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		mirrorNodeURL+"/api/v1/contracts/call",
+		bytes.NewReader(reqJSON),
+	)
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("mirror node request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("mirror node returned %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		Result string `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode mirror node response: %w", err)
+	}
+
+	hexResult := strings.TrimPrefix(result.Result, "0x")
+	if len(hexResult) < 64 {
+		return nil, fmt.Errorf("unexpected result length: %q", result.Result)
+	}
+	hexResult = hexResult[len(hexResult)-64:]
+	resultBytes, err := hex.DecodeString(hexResult)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode result hex: %w", err)
+	}
+
+	return new(big.Int).SetBytes(resultBytes), nil
 }
 
 // readContractPayment calls the Mirror Node to read payments(bytes32,address) from the escrow contract
@@ -872,20 +1062,22 @@ func (s *Service) ReactivateLeague(ctx context.Context, leagueID, userID string)
 	return nil
 }
 
-// ConfirmRefund verifies the on-chain refund via Mirror Node and marks the member as refunded
+// ConfirmRefund verifies the on-chain refund via Mirror Node and marks the member as refunded.
 func (s *Service) ConfirmRefund(ctx context.Context, leagueID, userID, transactionID string) error {
 	var walletAddress string
 	var paymentStatus string
 	var cancelledAt *time.Time
+	var paymentToken string
 
 	err := s.db.QueryRow(ctx, `
-		SELECT COALESCE(u.wallet_address, lm.wallet_address, ''), lm.payment_status, l.cancelled_at
+		SELECT COALESCE(u.wallet_address, lm.wallet_address, ''), lm.payment_status, l.cancelled_at,
+		       COALESCE(lm.payment_token, 'usdc')
 		FROM league_members lm
 		JOIN leagues l ON l.id = lm.league_id
 		JOIN platform_profiles pp ON pp.platform = lm.platform AND pp.platform_user_id = lm.platform_user_id
 		LEFT JOIN users u ON u.id = pp.user_id
 		WHERE lm.league_id = $1 AND pp.user_id = $2
-	`, leagueID, userID).Scan(&walletAddress, &paymentStatus, &cancelledAt)
+	`, leagueID, userID).Scan(&walletAddress, &paymentStatus, &cancelledAt, &paymentToken)
 
 	if err == pgx.ErrNoRows {
 		return ErrNotLeagueMember
@@ -915,14 +1107,25 @@ func (s *Service) ConfirmRefund(ctx context.Context, leagueID, userID, transacti
 		return fmt.Errorf("invalid contract ID: %w", err)
 	}
 
-	callData := encodePaymentsCall(leagueIdBytes, evmAddr)
-
-	onChain, err := s.readContractPayment(ctx, contractEVM, callData)
-	if err != nil {
-		return fmt.Errorf("failed to verify on-chain refund: %w", err)
-	}
-	if onChain != 0 {
-		return ErrPaymentInsufficient
+	// Verify the on-chain state shows the refund was claimed (mapping cleared to 0)
+	if paymentToken == "hbar" {
+		callData := encodeHbarPaymentsCall(leagueIdBytes, evmAddr)
+		onChain, err := s.readContractUint256(ctx, contractEVM, callData)
+		if err != nil {
+			return fmt.Errorf("failed to verify on-chain HBAR refund: %w", err)
+		}
+		if onChain.Sign() != 0 {
+			return ErrPaymentInsufficient
+		}
+	} else {
+		callData := encodePaymentsCall(leagueIdBytes, evmAddr)
+		onChain, err := s.readContractPayment(ctx, contractEVM, callData)
+		if err != nil {
+			return fmt.Errorf("failed to verify on-chain refund: %w", err)
+		}
+		if onChain != 0 {
+			return ErrPaymentInsufficient
+		}
 	}
 
 	_, err = s.db.Exec(ctx, `

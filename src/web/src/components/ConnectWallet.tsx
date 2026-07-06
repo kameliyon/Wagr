@@ -40,7 +40,7 @@ export default function ConnectWallet() {
             return accountId
         }
 
-        // For other wallets, format the address
+        // For EVM wallets, truncate the 0x address
         return formatWalletAddress(address, walletType)
     }
 
@@ -78,16 +78,21 @@ export default function ConnectWallet() {
                                 Cancel
                             </button>
                         </div>
+                    ) : isConnecting || isAuthenticating ? (
+                        <div className="wallet-connecting">
+                            <span className="connecting-label">
+                                {isConnecting ? 'Connecting...' : 'Waiting for signature...'}
+                            </span>
+                            <button className="btn-secondary" onClick={disconnect}>
+                                Cancel
+                            </button>
+                        </div>
                     ) : (
                             <button
                                 className="btn-primary"
-                                onClick={() => availableWallets.length === 1
-                                    ? handleConnect(availableWallets[0].type, availableWallets[0].name)
-                                    : setShowWalletSelect(true)
-                                }
-                                disabled={isConnecting || isAuthenticating}
+                                onClick={() => setShowWalletSelect(true)}
                             >
-                                {isConnecting ? 'Connecting...' : isAuthenticating ? 'Waiting for signature...' : 'Connect Wallet'}
+                                Connect Wallet
                             </button>
                         )}
                 {error && <p className="error">{error}</p>}

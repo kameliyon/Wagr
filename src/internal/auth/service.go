@@ -44,7 +44,7 @@ func (s *Service) GetOrCreateNonce(ctx context.Context, walletAddress, walletTyp
 		walletType = "hedera"
 	}
 
-	if walletType != "hedera" {
+	if walletType != "hedera" && walletType != "evm" {
 		return nil, fmt.Errorf("unsupported wallet type: %s", walletType)
 	}
 
@@ -89,7 +89,13 @@ func (s *Service) VerifySignature(ctx context.Context, req *VerifyRequest) (*Aut
 		return nil, ErrUserNotFound
 	}
 
-	valid, err := verifyHederaSignature(req.Message, req.Signature, req.WalletAddress)
+	var valid bool
+	switch user.WalletType {
+	case "evm":
+		valid, err = verifyEVMSignature(req.Message, req.Signature, req.WalletAddress)
+	default:
+		valid, err = verifyHederaSignature(req.Message, req.Signature, req.WalletAddress)
+	}
 	if err != nil || !valid {
 		fmt.Printf("verify sig is: %t\n", valid)
 		return nil, ErrInvalidSignature

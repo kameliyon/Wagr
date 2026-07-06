@@ -19,6 +19,7 @@ export function WalletConfigProvider({ children, walletConnectProjectId }: Walle
         walletConnectProjectId: projectId,
         defaultNetwork: {
             hedera: HEDERA_DEFAULT_NETWORK,
+            evm: 'testnet',
         },
     }
 

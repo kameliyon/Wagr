@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useWallet } from '../hooks/useWallet'
 import { HederaStrategy } from '../strategies/HederaStrategy'
+import { EVMStrategy } from '../strategies/EVMStrategy'
 import type { LeagueDetail, LeagueSettings, LeagueMember, PaymentToken, PaymentInstructions } from '../types/league'
 import './LeagueOverview.css'
 import { apiUrl } from '../utils/api'
@@ -167,11 +168,6 @@ export default function LeagueOverview() {
       setPayError('Wallet not connected. Please reconnect your wallet.')
       return
     }
-    if (!(activeStrategy instanceof HederaStrategy)) {
-      setPayError('Only Hedera wallets are supported for USDC payments')
-      return
-    }
-
     setPayLoading(true)
     setPayStage(null)
     setPayError(null)
@@ -192,24 +188,51 @@ export default function LeagueOverview() {
       }
       const instructions = await payRes.json() as PaymentInstructions
 
-      // Step 2: Send transaction via HashPack
-      setPayStage(`Approving ${instructions.amount_formatted} in HashPack…`)
+      // Step 2: Send transaction via the connected wallet
+      const walletLabel = walletState.type === 'evm' ? 'MetaMask' : 'HashPack'
       let transactionId: string
       try {
-        const result = await activeStrategy.payEntryFeeUSDC({
-          leagueId,
-          amountUSDC: instructions.amount_usdc,
-          contractId: instructions.contract_id,
-          usdcTokenId: instructions.usdc_token_id,
-          walletState,
-        })
-        transactionId = result.transactionId
+        if (instructions.token === 'hbar' && activeStrategy instanceof EVMStrategy) {
+          const result = await activeStrategy.payEntryFeeHBAR({
+            leagueId,
+            amountWeibars: instructions.amount_weibars!,
+            contractEvmAddress: instructions.contract_evm_address,
+            walletState,
+            onStage: (s) => setPayStage(s),
+          })
+          transactionId = result.transactionId
+        } else if (instructions.token === 'usdc' && activeStrategy instanceof EVMStrategy) {
+          const result = await activeStrategy.payEntryFeeUSDC({
+            leagueId,
+            amountUSDC: instructions.amount_usdc!,
+            contractEvmAddress: instructions.contract_evm_address,
+            usdcEvmAddress: instructions.usdc_evm_address!,
+            walletState,
+            onStage: (s) => setPayStage(s),
+          })
+          transactionId = result.transactionId
+        } else if (instructions.token === 'hbar') {
+          // HashPack + HBAR — routed through existing HederaStrategy transferHBAR stub
+          // (TODO: wire HederaStrategy to call payEntryFeeHBAR once contract is live)
+          setPayStage(`Sending ${instructions.amount_formatted} via HashPack…`)
+          throw new Error('HBAR payment via HashPack is not yet supported — choose USDC or use MetaMask')
+        } else {
+          setPayStage(`Approving ${instructions.amount_formatted} in HashPack…`)
+          const result = await (activeStrategy as HederaStrategy).payEntryFeeUSDC({
+            leagueId,
+            amountUSDC: instructions.amount_usdc!,
+            contractId: instructions.contract_id,
+            usdcTokenId: instructions.usdc_token_id!,
+            walletState,
+          })
+          transactionId = result.transactionId
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        if (msg.toLowerCase().includes('reject') || msg.toLowerCase().includes('cancel')) {
-          throw new Error('Transaction rejected in HashPack')
+        if (msg.toLowerCase().includes('reject') || msg.toLowerCase().includes('cancel') || msg.toLowerCase().includes('denied')) {
+          throw new Error(`Transaction rejected in ${walletLabel}`)
         }
-        throw new Error(`HashPack transaction failed: ${msg}`)
+        throw new Error(`${walletLabel} transaction failed: ${msg}`)
       }
 
       // Persist before confirming — if the page reloads before confirmation succeeds
@@ -350,11 +373,6 @@ export default function LeagueOverview() {
       setRefundError('Wallet not connected. Please reconnect your wallet.')
       return
     }
-    if (!(activeStrategy instanceof HederaStrategy)) {
-      setRefundError('Only Hedera wallets are supported for USDC refunds')
-      return
-    }
-
     const contractId = import.meta.env.VITE_HEDERA_ESCROW_CONTRACT_ID
     if (!contractId) {
       setRefundError('Contract ID not configured')
@@ -365,22 +383,34 @@ export default function LeagueOverview() {
     setRefundStage(null)
     setRefundError(null)
 
+    const walletLabel = walletState.type === 'evm' ? 'MetaMask' : 'HashPack'
+
     try {
-      setRefundStage('Sending refund transaction in HashPack…')
+      setRefundStage(`Sending refund transaction in ${walletLabel}…`)
+      const paidWithHBAR = myMember?.payment_token === 'hbar'
+      // Derive EVM address from the Hedera contract ID (0.0.N → 0x long-zero format)
+      const contractNum = BigInt(contractId.split('.')[2])
+      const contractEvmAddress = '0x' + contractNum.toString(16).padStart(40, '0')
       let transactionId: string
       try {
-        const result = await activeStrategy.claimRefund({ leagueId, contractId, walletState })
-        transactionId = result.transactionId
+        if (activeStrategy instanceof EVMStrategy && paidWithHBAR) {
+          const result = await activeStrategy.claimRefundHBAR({ leagueId, contractEvmAddress, walletState })
+          transactionId = result.transactionId
+        } else if (activeStrategy instanceof EVMStrategy) {
+          const result = await activeStrategy.claimRefund({ leagueId, contractEvmAddress, walletState })
+          transactionId = result.transactionId
+        } else {
+          const result = await (activeStrategy as HederaStrategy).claimRefund({ leagueId, contractId, walletState })
+          transactionId = result.transactionId
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        if (msg.toLowerCase().includes('reject') || msg.toLowerCase().includes('cancel')) {
-          throw new Error('Transaction rejected in HashPack')
+        if (msg.toLowerCase().includes('reject') || msg.toLowerCase().includes('cancel') || msg.toLowerCase().includes('denied')) {
+          throw new Error(`Transaction rejected in ${walletLabel}`)
         }
         if (msg.includes('CONTRACT_REVERT_EXECUTED')) {
-          // Extract transactionId from the StatusError message and look up the Solidity revert reason
           const txMatch = msg.match(/transaction ([\d.@]+)/)
           if (txMatch) {
-            // "0.0.12345@1234567890.123456789" → "0.0.12345-1234567890-123456789"
             const mirrorTxId = txMatch[1].replace('@', '-').replace(/\.(\d+)$/, '-$1')
             try {
               const mirrorRes = await fetch(
@@ -396,7 +426,7 @@ export default function LeagueOverview() {
             }
           }
         }
-        throw new Error(`HashPack transaction failed: ${msg}`)
+        throw new Error(`${walletLabel} transaction failed: ${msg}`)
       }
 
       if (pendingRefundTxKey) localStorage.setItem(pendingRefundTxKey, transactionId)

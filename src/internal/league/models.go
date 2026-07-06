@@ -105,12 +105,20 @@ type PayStubResponse struct {
 	Message         string `json:"message"`
 }
 
-// PaymentInstructions is returned by InitiatePayment for USDC escrow payments
+// PaymentInstructions is returned by InitiatePayment for escrow payments.
+// Token determines which fields are populated.
 type PaymentInstructions struct {
-	ContractID      string `json:"contract_id"`       // Hedera contract ID, e.g. "0.0.5555555"
-	USDCTokenID     string `json:"usdc_token_id"`     // Hedera token ID, e.g. "0.0.456858"
-	AmountUSDC      int64  `json:"amount_usdc"`       // 6-decimal units (entry_fee_cents * 10_000)
-	AmountFormatted string `json:"amount_formatted"`  // e.g. "$50.00 USDC"
+	ContractID         string `json:"contract_id"`          // Hedera contract ID, e.g. "0.0.5555555"
+	ContractEvmAddress string `json:"contract_evm_address"` // EVM address for the escrow contract
+	Token              string `json:"token"`                // "usdc" or "hbar"
+	// USDC-specific (populated when token == "usdc")
+	USDCTokenID    string `json:"usdc_token_id,omitempty"`
+	USDCEvmAddress string `json:"usdc_evm_address,omitempty"`
+	AmountUSDC     int64  `json:"amount_usdc,omitempty"` // 6-decimal units (entry_fee_cents * 10_000)
+	// HBAR-specific (populated when token == "hbar")
+	AmountWeibars string `json:"amount_weibars,omitempty"` // big-integer string; 1 HBAR = 10^18 weibars
+	// Common
+	AmountFormatted string `json:"amount_formatted"` // e.g. "$50.00 USDC" or "50.42 HBAR (~$50.00)"
 }
 
 // ConfirmPaymentRequest is the body for POST /{leagueId}/confirm-payment

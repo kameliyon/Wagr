@@ -2,6 +2,7 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  position: relative;
 }
 
 /* ── Authenticated state — NO box, inline layout ─────────── */
@@ -76,10 +77,15 @@
 /* ── Wallet picker dropdown ───────────────────────────────── */
 
 .wallet-select {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  min-width: 220px;
+  z-index: 200;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  background: rgba(6, 11, 24, 0.9);
+  background: rgba(6, 11, 24, 0.96);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--glass-border);
@@ -100,6 +106,19 @@
 
 .wallet-name {
   font-weight: 500;
+}
+
+/* ── Connecting in-progress ───────────────────────────────── */
+
+.wallet-connecting {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.connecting-label {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
 }
 
 /* ── Connected but not authenticated ──────────────────────── */

@@ -92,38 +92,46 @@ export class HederaStrategy implements WalletStrategy {
                 throw new Error('Failed to create DApp connector')
             }
 
+            // Lift resolve/reject so the modal-close handler can reach them
+            let resolveConnection!: (id: string) => void
+            let rejectConnection!: (err: Error) => void
+            let pollInterval: ReturnType<typeof setInterval>
+
+            const cleanup = () => {
+                clearInterval(pollInterval)
+                if (this.connectionTimeout) {
+                    clearTimeout(this.connectionTimeout)
+                    this.connectionTimeout = null
+                }
+            }
+
             // Set up connection detection - only need accountId, public key comes from signing
             const connectionPromise = new Promise<string>((resolve, reject) => {
+                resolveConnection = (id) => { cleanup(); resolve(id) }
+                rejectConnection = (err) => { cleanup(); reject(err) }
+
                 this.connectionTimeout = setTimeout(() => {
-                    clearInterval(pollInterval)
-                    reject(new Error('Connection timeout. Please approve the connection in HashPack.'))
+                    rejectConnection(new Error('Connection timeout. Please approve the connection in HashPack.'))
                 }, 90000)
 
                 // Listen for session connection event
                 if (this.connector?.onSessionConnected) {
                     this.connector.onSessionConnected((session: any) => {
-                        if (this.connectionTimeout) {
-                            clearTimeout(this.connectionTimeout)
-                            this.connectionTimeout = null
-                        }
-                        clearInterval(pollInterval)
-
                         const accountId = session?.accountIds?.[0]
                         if (accountId) {
-                            resolve(accountId)
+                            resolveConnection(accountId)
                         } else {
-                            reject(new Error('No account ID in session'))
+                            rejectConnection(new Error('No account ID in session'))
                         }
                     })
                 }
 
                 // Polling fallback - check for connected signers
-                const pollInterval = setInterval(() => {
+                pollInterval = setInterval(() => {
                     if ((this.connector as any)?.signers?.length > 0) {
                         const signer = (this.connector as any).signers[0]
                         let accountId: string | null = null
 
-                        // Extract account ID from signer
                         if (signer.getAccountId) {
                             accountId = signer.getAccountId().toString()
                         } else if (signer.accountId) {
@@ -133,12 +141,7 @@ export class HederaStrategy implements WalletStrategy {
                         }
 
                         if (accountId) {
-                            if (this.connectionTimeout) {
-                                clearTimeout(this.connectionTimeout)
-                                this.connectionTimeout = null
-                            }
-                            clearInterval(pollInterval)
-                            resolve(accountId)
+                            resolveConnection(accountId)
                         }
                     }
                 }, 1000)
@@ -152,10 +155,26 @@ export class HederaStrategy implements WalletStrategy {
                 icons: ['https://wagr.app/icon.png'],
             })
 
+            // Subscribe to modal close AFTER init so the WC client exists.
+            // When the user dismisses the modal without connecting, reject immediately
+            // rather than waiting for the 90-second timeout.
+            const connAny = this.connector as any
+            const wcModal = connAny?.walletConnectModal ?? connAny?.modal ?? connAny?._modal
+            let unsubscribeModal: (() => void) | undefined
+            if (wcModal?.subscribeModal) {
+                unsubscribeModal = wcModal.subscribeModal(({ open }: { open: boolean }) => {
+                    if (!open) {
+                        unsubscribeModal?.()
+                        rejectConnection(new Error('Connection cancelled'))
+                    }
+                })
+            }
+
             await this.connector.openModal()
 
             // Wait for connection
             const accountId = await connectionPromise
+            unsubscribeModal?.()
 
             // Close modal
             try {

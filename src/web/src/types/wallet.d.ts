@@ -1,6 +1,6 @@
 // Common wallet type definitions
 
-export type WalletType = 'hedera'
+export type WalletType = 'hedera' | 'evm'
 
 export interface WalletState {
   type: WalletType

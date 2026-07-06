@@ -42,8 +42,8 @@ func (h *Handlers) GetNonce(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate wallet type if provided (defaults to 'hedera' in service)
-	if req.WalletType != "" && req.WalletType != "hedera" {
-		respondError(w, http.StatusBadRequest, "wallet_type must be 'hedera'")
+	if req.WalletType != "" && req.WalletType != "hedera" && req.WalletType != "evm" {
+		respondError(w, http.StatusBadRequest, "wallet_type must be 'hedera' or 'evm'")
 		return
 	}
 
