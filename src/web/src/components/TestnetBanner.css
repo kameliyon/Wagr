@@ -1,0 +1,24 @@
+.testnet-banner {
+  width: 100%;
+  background: rgba(234, 179, 8, 0.1);
+  border-bottom: 1px solid rgba(234, 179, 8, 0.3);
+  color: #fde68a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.83rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-align: center;
+}
+
+.testnet-banner strong {
+  color: #fcd34d;
+}
+
+.testnet-banner-icon {
+  font-style: normal;
+  flex-shrink: 0;
+}
