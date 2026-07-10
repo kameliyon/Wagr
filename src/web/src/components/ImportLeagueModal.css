@@ -16,7 +16,7 @@
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6), 0 0 60px rgba(124, 58, 237, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6), 0 0 60px rgba(59, 130, 246,0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   border-radius: 20px;
   width: 100%;
   max-width: 520px;
@@ -99,7 +99,7 @@
   background: var(--accent-gradient);
   border-color: transparent;
   color: #fff;
-  box-shadow: 0 0 12px rgba(124, 58, 237, 0.5);
+  box-shadow: 0 0 12px rgba(59, 130, 246,0.5);
 }
 
 .modal-step.done .step-dot {
@@ -155,8 +155,8 @@
 }
 
 .modal-field input:focus {
-  border-color: rgba(124, 58, 237, 0.6);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+  border-color: rgba(59, 130, 246,0.6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246,0.15);
 }
 
 .modal-error {
@@ -192,14 +192,14 @@
 }
 
 .league-option:hover:not(.disabled) {
-  background: rgba(124, 58, 237, 0.08);
-  border-color: rgba(124, 58, 237, 0.35);
+  background: rgba(59, 130, 246,0.08);
+  border-color: rgba(59, 130, 246,0.35);
 }
 
 .league-option.selected {
-  background: rgba(124, 58, 237, 0.12);
-  border-color: rgba(124, 58, 237, 0.55);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12), 0 0 16px rgba(124, 58, 237, 0.15);
+  background: rgba(59, 130, 246,0.12);
+  border-color: rgba(59, 130, 246,0.55);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246,0.12), 0 0 16px rgba(59, 130, 246,0.15);
 }
 
 .league-option.disabled {

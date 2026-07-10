@@ -486,7 +486,7 @@ export default function LeagueOverview() {
       <div className="overview-header">
         <div className="overview-header-left">
           <button className="btn-back" onClick={() => navigate('/leagues')}>
-            ← Back to Leagues
+            ← Back
           </button>
           <h1>{league.name}</h1>
           <div className="overview-badges">
@@ -497,7 +497,7 @@ export default function LeagueOverview() {
         </div>
         <div className="overview-header-actions">
           <button className="copy-btn" onClick={handleCopyLink}>
-            {copied ? '✓ Copied!' : 'Copy Invite Link'}
+            {copied ? '✓ Copied!' : 'Copy Link'}
           </button>
           {isCommissioner && (
             <Link to={`/leagues/${leagueId}/settings`} className="btn-settings">
@@ -506,7 +506,7 @@ export default function LeagueOverview() {
           )}
           {isCommissioner && !isCancelled && (
             <button className="btn-danger" onClick={handleCancelLeague} disabled={cancelLoading}>
-              {cancelLoading ? 'Cancelling…' : 'Cancel League'}
+              {cancelLoading ? 'Cancelling…' : 'Cancel'}
             </button>
           )}
         </div>
@@ -540,64 +540,46 @@ export default function LeagueOverview() {
         </div>
       )}
 
-      {/* Teams table */}
-      <div className="settings-section">
-        <h2>Teams</h2>
+      {/* Teams list */}
+      <div className="overview-section">
+        <h2 className="overview-section-title">Teams</h2>
         {sorted.length === 0 ? (
-          <p className="settings-empty">No members found.</p>
+          <p className="overview-empty">No members found.</p>
         ) : (
-          <table className="payout-table teams-table">
-            <thead>
-              <tr>
-                <th>Team</th>
-                <th>Record</th>
-                <th>Points</th>
-                <th>Wagrs</th>
-                <th>Token</th>
-                <th>Payment</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((member) => {
-                const isConnected = member.user_id != null && member.wallet_address !== ''
-                return (
-                  <tr key={member.id} className="payout-row">
-                    <td>
-                      <div className="team-cell">
-                        <Avatar member={member} />
-                        <div className="team-names">
-                          <span className="team-display-name">
-                            {member.team_name || member.display_name}
-                          </span>
-                          {member.team_name && (
-                            <span className="team-platform-name">{member.display_name}</span>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="team-record">
-                      {member.wins}–{member.losses}
-                      {member.ties > 0 ? `–${member.ties}` : ''}
-                    </td>
-                    <td className="team-points">{member.total_points.toFixed(2)}</td>
-                    <td>
-                      <span className={`badge ${isConnected ? 'badge--connected' : 'badge--not-connected'}`}>
-                        {isConnected ? 'Connected' : 'Not Connected'}
-                      </span>
-                    </td>
-                    <td>
-                      <TokenBadge token={member.payment_token} />
-                    </td>
-                    <td>
-                      <span className={`badge badge--${member.payment_status}`}>
+          <div className="members-list">
+            {sorted.map((member, index) => {
+              const isConnected = member.user_id != null && member.wallet_address !== ''
+              return (
+                <div key={member.id} className="member-row">
+                  <span className="member-rank">#{index + 1}</span>
+                  <Avatar member={member} />
+                  <div className="member-info">
+                    <div className="member-name-row">
+                      <span className="member-name">{member.team_name || member.display_name}</span>
+                      <span className={`badge badge--${member.payment_status} member-payment-badge`}>
                         {member.payment_status.charAt(0).toUpperCase() + member.payment_status.slice(1)}
                       </span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                    </div>
+                    {member.team_name && (
+                      <span className="member-subname">{member.display_name}</span>
+                    )}
+                    <div className="member-stats">
+                      <span className="member-record">
+                        {member.wins}–{member.losses}{member.ties > 0 ? `–${member.ties}` : ''}
+                      </span>
+                      <span className="member-divider">·</span>
+                      <span className="member-pts">{member.total_points.toFixed(2)} pts</span>
+                      <span className="member-divider">·</span>
+                      <TokenBadge token={member.payment_token} />
+                      <span className={`badge ${isConnected ? 'badge--connected' : 'badge--not-connected'}`}>
+                        {isConnected ? 'Wagrs ✓' : 'No Wallet'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         )}
       </div>
 
