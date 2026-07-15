@@ -19,8 +19,8 @@
     background: linear-gradient(
       90deg,
       transparent 0%,
-      rgba(124, 58, 237, 0.45) 30%,
-      rgba(129, 140, 248, 0.35) 60%,
+      rgba(59, 130, 246, 0.45) 30%,
+      rgba(37, 99, 235, 0.3) 60%,
       transparent 100%
     );
   }
@@ -52,7 +52,7 @@
 .brand-mark {
   flex-shrink: 0;
   /* subtle glow on the SVG */
-  filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.4));
+  filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.4));
 }
 
 .navbar-brand span {
@@ -60,16 +60,16 @@
   font-size: 1.4rem;
   font-weight: 800;
   letter-spacing: 0.16em;
-  background: linear-gradient(135deg, #e2d9f3 0%, #a78bfa 45%, #818cf8 100%);
+  background: linear-gradient(135deg, #fff 0%, var(--theme-light, #93c5fd) 45%, var(--theme-hex2, #60a5fa) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  transition: background 0.3s ease;
 }
 
 /* ── Right side ───────────────────────────────────────────── */
 
 .navbar-right {
-  display: flex;
   align-items: center;
   gap: 1.5rem;
 }

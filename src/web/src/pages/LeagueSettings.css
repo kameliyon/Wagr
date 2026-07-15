@@ -145,8 +145,8 @@
 .input-dollar input:focus,
 .input-label:focus,
 .input-weeks:focus {
-  border-color: rgba(124, 58, 237, 0.6);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+  border-color: rgba(59, 130, 246, 0.6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
 .input-dollar input {
@@ -177,8 +177,8 @@
 }
 
 .payout-row select:focus {
-  border-color: rgba(124, 58, 237, 0.6);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+  border-color: rgba(59, 130, 246, 0.6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
 .payout-row input[placeholder="Min pts"] {
@@ -196,8 +196,8 @@
 }
 
 .payout-row input[placeholder="Min pts"]:focus {
-  border-color: rgba(124, 58, 237, 0.6);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+  border-color: rgba(59, 130, 246, 0.6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
 /* ── Payout table ─────────────────────────────────────────── */
@@ -265,8 +265,8 @@
 
 .btn-add-place {
   align-self: flex-start;
-  background: rgba(124, 58, 237, 0.08);
-  border: 1px dashed rgba(124, 58, 237, 0.4);
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px dashed rgba(59, 130, 246, 0.4);
   color: var(--accent-light);
   border-radius: 8px;
   font-size: 0.83rem;
@@ -278,10 +278,10 @@
 }
 
 .btn-add-place:hover {
-  background: rgba(124, 58, 237, 0.16);
-  border-color: rgba(124, 58, 237, 0.65);
+  background: rgba(59, 130, 246, 0.16);
+  border-color: rgba(59, 130, 246, 0.65);
   border-style: solid;
-  box-shadow: 0 0 12px rgba(124, 58, 237, 0.2);
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.2);
 }
 
 /* ── Totals ───────────────────────────────────────────────── */

@@ -1,30 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── shadcn/ui CSS variable foundation ───────────────────── */
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.75rem;
+  }
+
+  /* ── WAGR dark theme overrides ── */
+  .dark {
+    --background: 225 70% 7%;
+    --foreground: 213 31% 95%;
+    --card: 225 60% 9%;
+    --card-foreground: 213 31% 95%;
+    --popover: 225 60% 9%;
+    --popover-foreground: 213 31% 95%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 225 40% 13%;
+    --secondary-foreground: 213 31% 95%;
+    --muted: 225 40% 13%;
+    --muted-foreground: 215 20% 58%;
+    --accent: 225 35% 15%;
+    --accent-foreground: 213 31% 95%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 225 30% 18%;
+    --input: 225 30% 18%;
+    --ring: 217 91% 60%;
+    --radius: 0.75rem;
+  }
+}
+
+/* ── Global reset ─────────────────────────────────────────── */
+
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
+/* ── WAGR design tokens ───────────────────────────────────── */
+
 :root {
-  /* Accent */
-  --accent: #7c3aed;
-  --accent-2: #6366f1;
-  --accent-light: #a78bfa;
-  --accent-gradient: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%);
+  /* Accent (use --wagr-accent for hex value; --accent is owned by shadcn) */
+  --wagr-accent: #3b82f6;
+  --accent-2: #2563eb;
+  --accent-light: #93c5fd;
+  --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
 
   /* Glass surfaces */
   --glass: rgba(255, 255, 255, 0.04);
   --glass-hover: rgba(255, 255, 255, 0.07);
   --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-border-accent: rgba(124, 58, 237, 0.5);
+  --glass-border-accent: rgba(59, 130, 246, 0.5);
   --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  --glass-glow: 0 0 30px rgba(99, 102, 241, 0.18);
+  --glass-glow: 0 0 30px rgba(59, 130, 246, 0.18);
 
   /* Input surface */
   --input-bg: rgba(255, 255, 255, 0.05);
   --input-border: rgba(255, 255, 255, 0.1);
 
-  /* Backgrounds */
-  --background: #060b18;
+  /* Backgrounds (use --wagr-bg for hex; --background is owned by shadcn) */
+  --wagr-bg: #060b18;
   --surface: rgba(255, 255, 255, 0.04);
   --surface-light: rgba(255, 255, 255, 0.08);
 
@@ -40,16 +99,23 @@
 
   /* Typography */
   --font-body: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-brand: 'Syne', sans-serif;
+  --font-brand: 'Oswald', sans-serif;
 
-  /* Legacy aliases */
-  --primary-color: var(--accent-2);
-  --primary-hover: var(--accent);
+  /* ── Theme-driven tokens ── */
+  --theme-hex: #3b82f6;
+  --theme-hex2: #2563eb;
+  --theme-light: #93c5fd;
+  --theme-gradient: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  --theme-glow: rgba(59, 130, 246, 0.4);
+  --theme-orb1: rgba(59, 130, 246, 0.15);
+  --theme-orb2: rgba(37, 99, 235, 0.12);
+  --theme-svg-stop1: #bfdbfe;
+  --theme-svg-stop2: #60a5fa;
 }
 
 body {
   font-family: var(--font-body);
-  background-color: var(--background);
+  background-color: #060b18;
   color: var(--text-primary);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
@@ -66,7 +132,7 @@ body {
   isolation: isolate;
 }
 
-/* Purple orb — top left */
+/* Ambient orb — top left */
 .app::before {
   content: '';
   position: fixed;
@@ -74,12 +140,13 @@ body {
   left: -10%;
   width: 700px;
   height: 700px;
-  background: radial-gradient(circle, rgba(124, 58, 237, 0.18) 0%, transparent 65%);
+  background: radial-gradient(circle, var(--theme-orb1, rgba(59, 130, 246, 0.15)) 0%, transparent 65%);
   pointer-events: none;
   z-index: -1;
+  transition: background 0.4s ease;
 }
 
-/* Indigo orb — bottom right */
+/* Ambient orb — bottom right */
 .app::after {
   content: '';
   position: fixed;
@@ -87,9 +154,10 @@ body {
   right: -10%;
   width: 600px;
   height: 600px;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.14) 0%, transparent 65%);
+  background: radial-gradient(circle, var(--theme-orb2, rgba(37, 99, 235, 0.12)) 0%, transparent 65%);
   pointer-events: none;
   z-index: -1;
+  transition: background 0.4s ease;
 }
 
 .main-content {
@@ -100,7 +168,13 @@ body {
   width: 100%;
 }
 
-/* ── Glass mixin (applied via card classes) ─────────────── */
+@media (max-width: 640px) {
+  .main-content {
+    padding: 1rem;
+  }
+}
+
+/* ── Glass mixin ─────────────────────────────────────────── */
 
 .glass {
   background: var(--glass);
@@ -131,12 +205,12 @@ button:disabled {
 .btn-primary {
   background: var(--accent-gradient);
   color: #fff;
-  box-shadow: 0 0 20px rgba(124, 58, 237, 0.35), 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 20px var(--theme-glow, rgba(59, 130, 246, 0.35)), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .btn-primary:hover:not(:disabled) {
   filter: brightness(1.12);
-  box-shadow: 0 0 35px rgba(124, 58, 237, 0.55), 0 4px 14px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 35px var(--theme-glow, rgba(59, 130, 246, 0.55)), 0 4px 14px rgba(0, 0, 0, 0.4);
 }
 
 .btn-secondary {
@@ -153,4 +227,27 @@ button:disabled {
 
 input, select, textarea {
   font-family: inherit;
+}
+
+/* ── Font-brand override (ensures CSS variable is always used at runtime) ── */
+
+.font-brand {
+  font-family: var(--font-brand);
+}
+
+/* ── Theme utility classes ───────────────────────────────── */
+
+@layer utilities {
+  .theme-text-light      { color: var(--theme-light, #93c5fd); }
+  .theme-bg-primary-10   { background-color: hsl(var(--primary) / 0.1); }
+  .theme-bg-primary-15   { background-color: hsl(var(--primary) / 0.15); }
+  .theme-border-primary-30 { border-color: hsl(var(--primary) / 0.3); }
+  .theme-border-primary-40 { border-color: hsl(var(--primary) / 0.4); }
+  .theme-glow-shadow     { box-shadow: 0 0 30px var(--theme-glow, rgba(59, 130, 246, 0.4)); }
+  .theme-gradient-text {
+    background: linear-gradient(135deg, #fff 30%, var(--theme-light, #bfdbfe) 60%, var(--theme-hex2, #60a5fa) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
 }
