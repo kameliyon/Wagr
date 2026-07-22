@@ -11,10 +11,14 @@ interface Props {
   existingLeagues: League[]
 }
 
+const CURRENT_YEAR = new Date().getFullYear()
+const SEASON_OPTIONS = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2].map(String)
+
 export default function ImportLeagueModal({ isOpen, onClose, onImported, existingLeagues }: Props) {
   const { token } = useWallet()
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [username, setUsername] = useState('')
+  const [season, setSeason] = useState(SEASON_OPTIONS[0])
   const [profile, setProfile] = useState<PlatformProfile | null>(null)
   const [availableLeagues, setAvailableLeagues] = useState<PlatformLeague[]>([])
   const [selectedLeague, setSelectedLeague] = useState<PlatformLeague | null>(null)
@@ -26,6 +30,7 @@ export default function ImportLeagueModal({ isOpen, onClose, onImported, existin
     if (isOpen) {
       setStep(1)
       setUsername('')
+      setSeason(SEASON_OPTIONS[0])
       setProfile(null)
       setAvailableLeagues([])
       setSelectedLeague(null)
@@ -60,7 +65,7 @@ export default function ImportLeagueModal({ isOpen, onClose, onImported, existin
 
       // Fetch leagues for this platform user
       const leaguesRes = await fetch(
-        apiUrl(`/api/fantasy/sleeper/user/${data.platform_user_id}/leagues?sport=nfl&season=2025`),
+        apiUrl(`/api/fantasy/sleeper/user/${data.platform_user_id}/leagues?sport=nfl&season=${season}`),
         { headers: { Authorization: `Bearer ${token}` } }
       )
       if (!leaguesRes.ok) {
@@ -141,6 +146,26 @@ export default function ImportLeagueModal({ isOpen, onClose, onImported, existin
         {step === 1 && (
           <form className="modal-body" onSubmit={handleLinkPlatform}>
             <p>Enter your Sleeper username to connect your account.</p>
+            <div className="modal-field-row">
+              <div className="modal-field">
+                <label htmlFor="import-platform">Platform</label>
+                <select id="import-platform" value="sleeper" onChange={() => {}}>
+                  <option value="sleeper">Sleeper</option>
+                  <option value="espn" disabled>ESPN (Coming soon)</option>
+                  <option value="yahoo" disabled>Yahoo (Coming soon)</option>
+                </select>
+              </div>
+              <div className="modal-field">
+                <label htmlFor="import-season">Season</label>
+                <select id="import-season" value={season} onChange={(e) => setSeason(e.target.value)}>
+                  {SEASON_OPTIONS.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
             <div className="modal-field">
               <label htmlFor="sleeper-username">Sleeper Username</label>
               <input
@@ -169,8 +194,8 @@ export default function ImportLeagueModal({ isOpen, onClose, onImported, existin
         {step === 2 && (
           <div className="modal-body">
             <p>
-              Select a league to import from <strong>{profile?.platform_username}</strong>'s
-              2024 NFL season.
+              Select a league to import from <strong>{profile?.platform_username}</strong>'s{' '}
+              {season} NFL season.
             </p>
             {availableLeagues.length === 0 ? (
               <p>No leagues found for this account.</p>

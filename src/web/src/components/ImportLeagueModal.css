@@ -128,6 +128,15 @@
   line-height: 1.65;
 }
 
+.modal-field-row {
+  display: flex;
+  gap: 1rem;
+}
+
+.modal-field-row .modal-field {
+  flex: 1;
+}
+
 .modal-field {
   display: flex;
   flex-direction: column;
@@ -142,7 +151,8 @@
   letter-spacing: 0.07em;
 }
 
-.modal-field input {
+.modal-field input,
+.modal-field select {
   background: var(--input-bg);
   border: 1px solid var(--input-border);
   border-radius: 9px;
@@ -154,9 +164,27 @@
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.modal-field input:focus {
+.modal-field select {
+  /* Tells the browser to render native chrome (the option list popup) with
+     a dark palette, since that popup ignores our translucent --input-bg
+     and otherwise defaults to the OS light theme regardless of page theme. */
+  color-scheme: dark;
+}
+
+.modal-field select option {
+  background: var(--wagr-bg);
+  color: var(--text-primary);
+}
+
+.modal-field input:focus,
+.modal-field select:focus {
   border-color: rgba(59, 130, 246,0.6);
   box-shadow: 0 0 0 3px rgba(59, 130, 246,0.15);
+}
+
+.modal-field select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .modal-error {
