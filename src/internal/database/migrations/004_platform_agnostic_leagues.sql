@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS leagues (
     name VARCHAR(255) NOT NULL,
     sport VARCHAR(50) NOT NULL,                 -- 'nfl', 'nba', 'mlb', etc.
     season VARCHAR(10) NOT NULL,                -- '2024', '2024-25', etc.
-    status VARCHAR(50),                         -- 'pre_draft', 'in_season', 'complete'
+    status VARCHAR(50),                         -- 'pre_draft', 'drafting', 'in_season', 'post_season', 'complete'
     total_rosters INT,
     scoring_type VARCHAR(50),                   -- 'ppr', 'standard', 'half_ppr', etc.
     entry_fee_cents BIGINT DEFAULT 0,           -- Entry fee in cents (e.g., $50 = 5000)

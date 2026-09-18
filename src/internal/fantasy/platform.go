@@ -46,6 +46,11 @@ type FantasyPlatform interface {
 	// GetCurrentWeek returns the current scoring week for the platform's primary sport
 	GetCurrentWeek(ctx context.Context) (int, error)
 
+	// GetCurrentSeason returns the platform's current season (e.g. "2026") for its
+	// primary sport. This is the platform's own notion of the season, which during
+	// January/February playoffs is still the prior calendar year.
+	GetCurrentSeason(ctx context.Context) (string, error)
+
 	// RequiresAuth returns true if the platform requires OAuth or API key authentication
 	RequiresAuth() bool
 

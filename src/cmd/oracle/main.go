@@ -20,6 +20,11 @@ import (
 // Set via ORACLE_JOB_TIMEOUT env var (e.g. "15m"). Defaults to 10 minutes.
 const defaultJobTimeout = 10 * time.Minute
 
+// statusRefreshTimeoutShare bounds the status refresh to a fraction of the overall
+// job timeout, so a slow or rate-limited platform can't consume the whole budget and
+// leave no time for the payout jobs.
+const statusRefreshTimeoutShare = 4
+
 func main() {
 	job := flag.String("job", "", `which job to run: "weekly", "season", or omit to run both`)
 	flag.Parse()
@@ -76,6 +81,16 @@ func main() {
 	}
 
 	svc := league.NewService(db.Pool, platformService, hederaUSDCTokenID, hederaEscrowContractID, hederaNetwork, hederaClient)
+
+	// Advance pre_draft/drafting/post_season leagues before the payout jobs query for
+	// in_season leagues. Errors are logged but never block payouts or affect the exit
+	// code, and the refresh runs on its own sub-budget so it can't starve them.
+	log.Println("[oracle] refreshing league statuses")
+	refreshCtx, cancelRefresh := context.WithTimeout(ctx, timeout/statusRefreshTimeoutShare)
+	if err := svc.RefreshLeagueStatuses(refreshCtx); err != nil {
+		log.Printf("[oracle] league status refresh error: %v", err)
+	}
+	cancelRefresh()
 
 	failed := false
 

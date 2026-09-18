@@ -186,6 +186,15 @@ func (a *Adapter) GetCurrentWeek(ctx context.Context) (int, error) {
 	return state.Week, nil
 }
 
+// GetCurrentSeason returns the current NFL season from Sleeper's state endpoint
+func (a *Adapter) GetCurrentSeason(ctx context.Context) (string, error) {
+	state, err := a.client.GetNFLState()
+	if err != nil {
+		return "", err
+	}
+	return state.Season, nil
+}
+
 // RequiresAuth returns false since Sleeper API doesn't require authentication
 func (a *Adapter) RequiresAuth() bool {
 	return false
