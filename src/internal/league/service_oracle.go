@@ -461,3 +461,207 @@ func (s *Service) processSeasonEndForLeague(ctx context.Context, league oracleLe
 	log.Printf("[oracle] season-end payouts for league %s: %d recipients, tx %s", league.ID, len(resolved), txHash)
 	return nil
 }
+
+// leagueStatusRank orders the statuses the status refresh understands.
+// "in_season" is the highest status the refresh may ever write: "complete" is
+// deliberately mapped down (see canonicalLeagueStatus) because only
+// processSeasonEndForLeague may set it, and that transition is what triggers
+// placement payouts.
+var leagueStatusRank = map[string]int{
+	"pre_draft":   0,
+	"drafting":    1,
+	"in_season":   2,
+	"post_season": 2, // playoffs: still a payable, not-yet-complete season
+	"complete":    3,
+}
+
+// canonicalLeagueStatus maps a platform-reported status onto the status the refresh
+// stores. "post_season" and "complete" both become "in_season": the payout jobs only
+// query for "in_season", and the season-end job is what recognizes completion and
+// pays out placements.
+func canonicalLeagueStatus(status string) string {
+	switch status {
+	case "post_season", "complete":
+		return "in_season"
+	default:
+		return status
+	}
+}
+
+// nextLeagueStatus returns the status to store given the stored and platform-reported
+// statuses, and whether an update is needed. Transitions only move forward, and the
+// highest status this can write is "in_season". A stored "" (NULL from import) is
+// treated as "pre_draft".
+func nextLeagueStatus(stored, platform string) (string, bool) {
+	effectiveStored := stored
+	if effectiveStored == "" {
+		effectiveStored = "pre_draft" // NULL from import
+	}
+	storedRank, ok := leagueStatusRank[effectiveStored]
+	if !ok {
+		return stored, false
+	}
+
+	// A league stored as "post_season" is rewritten to "in_season" so the payout jobs
+	// (which query only for "in_season") can see it. This is the one case where the
+	// rank doesn't increase, so it's handled before the rank comparison. It only
+	// applies to "post_season": "complete" outranks "in_season" and must never be
+	// walked back, since that would re-open a finished league.
+	if effectiveStored == "post_season" {
+		if platformRank, ok := leagueStatusRank[platform]; ok && platformRank >= storedRank {
+			return "in_season", true
+		}
+		return stored, false
+	}
+
+	target := canonicalLeagueStatus(platform)
+	targetRank, ok := leagueStatusRank[target]
+	if !ok || targetRank <= storedRank {
+		return stored, false
+	}
+	return target, true
+}
+
+// statusRefreshLeague is a league eligible for status refresh.
+type statusRefreshLeague struct {
+	ID               string
+	Platform         string
+	PlatformLeagueID string
+	Season           string
+	Status           string // "" when NULL
+}
+
+// filterCurrentSeasonLeagues drops leagues that aren't part of their platform's
+// current season, so a stale prior-season league can't be advanced to "in_season"
+// and then paid weekly bonuses against the current season's week numbering.
+// A platform missing from seasonByPlatform (its lookup failed) has all its leagues
+// dropped: skipping a refresh is always safer than a wrong payout.
+func filterCurrentSeasonLeagues(leagues []statusRefreshLeague, seasonByPlatform map[string]string) []statusRefreshLeague {
+	var kept []statusRefreshLeague
+	for _, l := range leagues {
+		currentSeason, ok := seasonByPlatform[l.Platform]
+		if !ok {
+			log.Printf("[oracle] status refresh: skipping league %s: no current season for platform %s", l.ID, l.Platform)
+			continue
+		}
+		if l.Season != currentSeason {
+			log.Printf("[oracle] status refresh: skipping league %s: season %q is not the current %s season (%q)", l.ID, l.Season, l.Platform, currentSeason)
+			continue
+		}
+		kept = append(kept, l)
+	}
+	return kept
+}
+
+type fetchPlatformStatusFunc func(ctx context.Context, platform, platformLeagueID string) (string, error)
+
+// updateLeagueStatusFunc applies the status change and reports whether a row was
+// actually updated. A false return means the stored status changed underneath us
+// (another oracle run got there first), which is not an error.
+type updateLeagueStatusFunc func(ctx context.Context, leagueID, oldStatus, newStatus string) (bool, error)
+
+// refreshLeagueStatuses applies nextLeagueStatus to each league, skipping any league
+// whose platform lookup or update fails. Returns the number of leagues updated.
+func refreshLeagueStatuses(ctx context.Context, leagues []statusRefreshLeague, fetch fetchPlatformStatusFunc, update updateLeagueStatusFunc) int {
+	updated := 0
+	for _, l := range leagues {
+		platformStatus, err := fetch(ctx, l.Platform, l.PlatformLeagueID)
+		if err != nil {
+			log.Printf("[oracle] status refresh: failed to fetch platform status for league %s: %v", l.ID, err)
+			continue
+		}
+		if _, known := leagueStatusRank[platformStatus]; !known {
+			log.Printf("[oracle] status refresh: league %s has unrecognized platform status %q; leaving %q", l.ID, platformStatus, l.Status)
+			continue
+		}
+		next, ok := nextLeagueStatus(l.Status, platformStatus)
+		if !ok {
+			continue
+		}
+		changed, err := update(ctx, l.ID, l.Status, next)
+		if err != nil {
+			log.Printf("[oracle] status refresh: failed to update league %s: %v", l.ID, err)
+			continue
+		}
+		if !changed {
+			log.Printf("[oracle] status refresh: league %s no longer %q; another run updated it first", l.ID, l.Status)
+			continue
+		}
+		log.Printf("[oracle] status refresh: league %s %q -> %q (platform reports %q)", l.ID, l.Status, next, platformStatus)
+		updated++
+	}
+	return updated
+}
+
+// RefreshLeagueStatuses advances the local status of leagues that haven't started
+// (pre_draft, drafting, or NULL) plus leagues stored as post_season, based on the
+// platform's current status, so the weekly and season-end payout jobs pick them up.
+// Only current-season leagues are considered.
+func (s *Service) RefreshLeagueStatuses(ctx context.Context) error {
+	rows, err := s.db.Query(ctx, `
+		SELECT id, platform, platform_league_id, season, COALESCE(status, '')
+		FROM leagues
+		WHERE cancelled_at IS NULL
+		  AND (status IS NULL OR status IN ('pre_draft', 'drafting', 'post_season'))
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to load leagues for status refresh: %w", err)
+	}
+
+	var leagues []statusRefreshLeague
+	for rows.Next() {
+		var l statusRefreshLeague
+		if err := rows.Scan(&l.ID, &l.Platform, &l.PlatformLeagueID, &l.Season, &l.Status); err != nil {
+			rows.Close()
+			return fmt.Errorf("failed to scan league row: %w", err)
+		}
+		leagues = append(leagues, l)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed to iterate league rows: %w", err)
+	}
+
+	// Resolve each platform's current season once, not once per league. Failures are
+	// recorded as attempted too, so one broken platform can't cause a lookup per league.
+	seasonByPlatform := make(map[string]string)
+	attempted := make(map[string]bool)
+	for _, l := range leagues {
+		if attempted[l.Platform] {
+			continue
+		}
+		attempted[l.Platform] = true
+		season, err := s.platformService.GetCurrentSeason(ctx, fantasy.PlatformType(l.Platform))
+		if err != nil {
+			log.Printf("[oracle] status refresh: failed to get current season for platform %s: %v", l.Platform, err)
+			continue
+		}
+		seasonByPlatform[l.Platform] = season
+	}
+
+	candidates := filterCurrentSeasonLeagues(leagues, seasonByPlatform)
+
+	fetch := func(ctx context.Context, platform, platformLeagueID string) (string, error) {
+		pl, err := s.platformService.GetLeague(ctx, fantasy.PlatformType(platform), platformLeagueID)
+		if err != nil {
+			return "", err
+		}
+		return pl.Status, nil
+	}
+	update := func(ctx context.Context, leagueID, oldStatus, newStatus string) (bool, error) {
+		// Conditional on the status we read, so overlapping oracle runs can't clobber
+		// a newer transition (e.g. the season job setting "complete").
+		tag, err := s.db.Exec(ctx, `
+			UPDATE leagues SET status = $2, updated_at = NOW()
+			WHERE id = $1 AND COALESCE(status, '') = $3
+		`, leagueID, newStatus, oldStatus)
+		if err != nil {
+			return false, err
+		}
+		return tag.RowsAffected() > 0, nil
+	}
+
+	updated := refreshLeagueStatuses(ctx, candidates, fetch, update)
+	log.Printf("[oracle] status refresh: %d eligible leagues, %d current-season, %d updated", len(leagues), len(candidates), updated)
+	return nil
+}

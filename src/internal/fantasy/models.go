@@ -19,7 +19,7 @@ type PlatformLeague struct {
 	Name             string            `json:"name"`
 	Sport            string            `json:"sport"`        // e.g., "nfl", "nba", "mlb"
 	Season           string            `json:"season"`       // e.g., "2024"
-	Status           string            `json:"status"`       // e.g., "pre_draft", "in_season", "complete"
+	Status           string            `json:"status"`       // "pre_draft", "drafting", "in_season", "post_season", "complete"
 	TotalRosters     int               `json:"total_rosters"`
 	ScoringType      string            `json:"scoring_type"` // e.g., "ppr", "standard", "half_ppr"
 	Metadata         map[string]string `json:"metadata,omitempty"` // Platform-specific fields

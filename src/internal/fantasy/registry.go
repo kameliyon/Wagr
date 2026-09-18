@@ -141,6 +141,15 @@ func (s *PlatformService) GetCurrentWeek(ctx context.Context, platform PlatformT
 	return p.GetCurrentWeek(ctx)
 }
 
+// GetCurrentSeason returns the current season for a platform's primary sport
+func (s *PlatformService) GetCurrentSeason(ctx context.Context, platform PlatformType) (string, error) {
+	p, err := s.registry.Get(platform)
+	if err != nil {
+		return "", err
+	}
+	return p.GetCurrentSeason(ctx)
+}
+
 // ListPlatforms returns all available platforms
 func (s *PlatformService) ListPlatforms() []PlatformType {
 	return s.registry.ListPlatforms()
