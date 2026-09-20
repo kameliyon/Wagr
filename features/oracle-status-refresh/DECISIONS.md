@@ -113,6 +113,8 @@ longer needed.
   season query only selects `in_season`, so it is never retried even once escrow is
   funded. This feature doesn't create the bug but does route more leagues through
   that path. Out of scope here; needs the status write moved after the escrow check.
+  **Fixed by `features/season-end-unfunded-retry`** (status written only once the
+  payout is settled; migration 009 resets already-stranded leagues).
 - **Stale-season leagues** are skipped entirely by the refresh, so they stay stuck at
   `pre_draft` and are never paid. That is deliberate: paying them against the current
   season's weeks would be wrong.
