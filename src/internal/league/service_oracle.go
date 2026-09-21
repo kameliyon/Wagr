@@ -313,19 +313,117 @@ func (s *Service) RunSeasonEndPayoutJob(ctx context.Context) error {
 	return nil
 }
 
+// seasonEndDeps are the external calls the season-end settlement makes, injected so
+// the ordering of reads, the payout claim and the on-chain call can be unit tested.
+type seasonEndDeps struct {
+	platformStatus func(ctx context.Context, platform, platformLeagueID string) (string, error)
+	finalStandings func(ctx context.Context, platform, platformLeagueID string) ([]fantasy.PlatformStanding, error)
+	loadMembers    func(ctx context.Context, leagueID string) ([]LeagueMember, error)
+	resolveEVM     func(ctx context.Context, accountID string) ([20]byte, error)
+	escrowBalance  func(ctx context.Context, leagueID [32]byte) (int64, error)
+	distribute     func(ctx context.Context, leagueID [32]byte, recipients [][20]byte, amounts []int64) (string, error)
+
+	// markSettledWithoutPayout sets complete + executed for a league with nothing to pay.
+	markSettledWithoutPayout func(ctx context.Context, leagueID string) error
+	// claimPayout moves payout_status pending -> executing and reports whether this
+	// run won the claim. Only the winner may send the payout transaction.
+	claimPayout func(ctx context.Context, leagueID string) (bool, error)
+	// markPayoutFailed moves payout_status executing -> failed. Status stays in_season.
+	markPayoutFailed func(ctx context.Context, leagueID string) error
+	// markPayoutExecuted sets complete + executed + tx hash, conditional on executing,
+	// and reports whether a row was updated.
+	markPayoutExecuted func(ctx context.Context, leagueID, txHash string) (bool, error)
+	recordMemberPayout func(ctx context.Context, leagueID string, rosterID, place int, amountCents int64, txHash string) error
+}
+
+// seasonEndDeps wires settleSeasonEnd to the platform service, the database, the
+// Mirror Node and the escrow contract.
+func (s *Service) seasonEndDeps() seasonEndDeps {
+	return seasonEndDeps{
+		platformStatus: func(ctx context.Context, platform, platformLeagueID string) (string, error) {
+			l, err := s.platformService.GetLeague(ctx, fantasy.PlatformType(platform), platformLeagueID)
+			if err != nil {
+				return "", err
+			}
+			return l.Status, nil
+		},
+		finalStandings: func(ctx context.Context, platform, platformLeagueID string) ([]fantasy.PlatformStanding, error) {
+			return s.platformService.GetFinalStandings(ctx, fantasy.PlatformType(platform), platformLeagueID)
+		},
+		loadMembers: s.GetLeagueMembers,
+		resolveEVM:  s.getAccountEVMAddress,
+		escrowBalance: func(ctx context.Context, leagueID [32]byte) (int64, error) {
+			contractEVM, err := hederaAccountToEVM(s.hederaEscrowContractID)
+			if err != nil {
+				return 0, fmt.Errorf("invalid escrow contract ID: %w", err)
+			}
+			return s.readContractPayment(ctx, contractEVM, encodeLeagueTotalsCall(leagueID))
+		},
+		distribute: s.hederaClient.ExecuteDistributePayout,
+		markSettledWithoutPayout: func(ctx context.Context, leagueID string) error {
+			_, err := s.db.Exec(ctx, `
+				UPDATE leagues
+				SET status = 'complete', payout_status = 'executed', payouts_executed_at = NOW(), updated_at = NOW()
+				WHERE id = $1 AND payout_status = 'pending'
+			`, leagueID)
+			return err
+		},
+		claimPayout: func(ctx context.Context, leagueID string) (bool, error) {
+			tag, err := s.db.Exec(ctx, `
+				UPDATE leagues SET payout_status = 'executing', updated_at = NOW()
+				WHERE id = $1 AND payout_status = 'pending'
+			`, leagueID)
+			if err != nil {
+				return false, err
+			}
+			return tag.RowsAffected() == 1, nil
+		},
+		markPayoutFailed: func(ctx context.Context, leagueID string) error {
+			_, err := s.db.Exec(ctx, `
+				UPDATE leagues SET payout_status = 'failed', updated_at = NOW()
+				WHERE id = $1 AND payout_status = 'executing'
+			`, leagueID)
+			return err
+		},
+		markPayoutExecuted: func(ctx context.Context, leagueID, txHash string) (bool, error) {
+			tag, err := s.db.Exec(ctx, `
+				UPDATE leagues
+				SET status = 'complete', payout_status = 'executed', payout_tx_hash = $2,
+				    payouts_executed_at = NOW(), updated_at = NOW()
+				WHERE id = $1 AND payout_status = 'executing'
+			`, leagueID, txHash)
+			if err != nil {
+				return false, err
+			}
+			return tag.RowsAffected() == 1, nil
+		},
+		recordMemberPayout: func(ctx context.Context, leagueID string, rosterID, place int, amountCents int64, txHash string) error {
+			_, err := s.db.Exec(ctx, `
+				UPDATE league_members
+				SET final_rank = $1, payout_amount_cents = $2, payout_tx_hash = $3, payout_paid_at = NOW(), updated_at = NOW()
+				WHERE league_id = $4 AND roster_id = $5
+			`, place, amountCents, txHash, leagueID, rosterID)
+			return err
+		},
+	}
+}
+
 func (s *Service) processSeasonEndForLeague(ctx context.Context, league oracleLeague) error {
-	platformLeague, err := s.platformService.GetLeague(ctx, fantasy.PlatformType(league.Platform), league.PlatformLeagueID)
+	return settleSeasonEnd(ctx, league, s.seasonEndDeps())
+}
+
+// settleSeasonEnd pays out placement prizes for a league whose season is complete on
+// the platform. Nothing is written to the league row until the payout is settled, so
+// a league that can't be paid yet (escrow short, platform or Mirror Node error) stays
+// in_season + pending and is retried on the next run. "complete" is only ever written
+// together with payout_status = 'executed'.
+func settleSeasonEnd(ctx context.Context, league oracleLeague, deps seasonEndDeps) error {
+	platformStatus, err := deps.platformStatus(ctx, league.Platform, league.PlatformLeagueID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch platform league status: %w", err)
 	}
-	if platformLeague.Status != "complete" {
+	if platformStatus != "complete" {
 		return nil
-	}
-
-	if _, err := s.db.Exec(ctx, `
-		UPDATE leagues SET status = 'complete', updated_at = NOW() WHERE id = $1
-	`, league.ID); err != nil {
-		return fmt.Errorf("failed to update local league status: %w", err)
 	}
 
 	var placementEntries []PayoutEntry
@@ -336,18 +434,15 @@ func (s *Service) processSeasonEndForLeague(ctx context.Context, league oracleLe
 	}
 	if len(placementEntries) == 0 {
 		log.Printf("[oracle] league %s season complete with no placement rules; marking executed", league.ID)
-		_, err = s.db.Exec(ctx, `
-			UPDATE leagues SET payout_status = 'executed', payouts_executed_at = NOW(), updated_at = NOW() WHERE id = $1
-		`, league.ID)
-		return err
+		return deps.markSettledWithoutPayout(ctx, league.ID)
 	}
 
-	standings, err := s.platformService.GetFinalStandings(ctx, fantasy.PlatformType(league.Platform), league.PlatformLeagueID)
+	standings, err := deps.finalStandings(ctx, league.Platform, league.PlatformLeagueID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch final standings: %w", err)
 	}
 
-	members, err := s.GetLeagueMembers(ctx, league.ID)
+	members, err := deps.loadMembers(ctx, league.ID)
 	if err != nil {
 		return fmt.Errorf("failed to load members: %w", err)
 	}
@@ -383,7 +478,7 @@ func (s *Service) processSeasonEndForLeague(ctx context.Context, league oracleLe
 			log.Printf("[oracle] skipping %s (place %d): no wallet address", member.DisplayName, standing.Place)
 			continue
 		}
-		addr, err := s.getAccountEVMAddress(ctx, member.WalletAddress)
+		addr, err := deps.resolveEVM(ctx, member.WalletAddress)
 		if err != nil {
 			log.Printf("[oracle] skipping %s: failed to resolve EVM address: %v", member.WalletAddress, err)
 			continue
@@ -398,19 +493,12 @@ func (s *Service) processSeasonEndForLeague(ctx context.Context, league oracleLe
 
 	if len(resolved) == 0 {
 		log.Printf("[oracle] league %s: no eligible placement targets; marking executed", league.ID)
-		_, err = s.db.Exec(ctx, `
-			UPDATE leagues SET payout_status = 'executed', payouts_executed_at = NOW(), updated_at = NOW() WHERE id = $1
-		`, league.ID)
-		return err
+		return deps.markSettledWithoutPayout(ctx, league.ID)
 	}
 
 	leagueIDBytes, err := uuidToBytes32(league.ID)
 	if err != nil {
 		return fmt.Errorf("invalid league ID: %w", err)
-	}
-	contractEVM, err := hederaAccountToEVM(s.hederaEscrowContractID)
-	if err != nil {
-		return fmt.Errorf("invalid escrow contract ID: %w", err)
 	}
 
 	recipients := make([][20]byte, len(resolved))
@@ -422,7 +510,7 @@ func (s *Service) processSeasonEndForLeague(ctx context.Context, league oracleLe
 		totalPayout += amounts[i]
 	}
 
-	escrowBalance, err := s.readContractPayment(ctx, contractEVM, encodeLeagueTotalsCall(leagueIDBytes))
+	escrowBalance, err := deps.escrowBalance(ctx, leagueIDBytes)
 	if err != nil {
 		return fmt.Errorf("failed to read escrow balance: %w", err)
 	}
@@ -430,30 +518,37 @@ func (s *Service) processSeasonEndForLeague(ctx context.Context, league oracleLe
 		return ErrInsufficientEscrow
 	}
 
-	txHash, err := s.hederaClient.ExecuteDistributePayout(ctx, leagueIDBytes, recipients, amounts)
+	// Claim the league before sending the transaction. A league left in 'executing'
+	// is never selected again, so a crash or DB failure after the transaction can't
+	// lead to a second payout; it needs a manual check instead.
+	claimed, err := deps.claimPayout(ctx, league.ID)
 	if err != nil {
-		if _, dbErr := s.db.Exec(ctx, `
-			UPDATE leagues SET payout_status = 'failed', updated_at = NOW() WHERE id = $1
-		`, league.ID); dbErr != nil {
-			log.Printf("[oracle] failed to mark league %s as failed: %v", league.ID, dbErr)
+		return fmt.Errorf("failed to claim league for payout: %w", err)
+	}
+	if !claimed {
+		log.Printf("[oracle] league %s no longer pending; another run claimed the payout first", league.ID)
+		return nil
+	}
+
+	txHash, err := deps.distribute(ctx, leagueIDBytes, recipients, amounts)
+	if err != nil {
+		if dbErr := deps.markPayoutFailed(ctx, league.ID); dbErr != nil {
+			log.Printf("[oracle] MANUAL CHECK: league %s payout tx failed and marking it failed also failed; left in 'executing': %v", league.ID, dbErr)
 		}
 		return fmt.Errorf("on-chain execution failed: %w", err)
 	}
 
-	if _, err := s.db.Exec(ctx, `
-		UPDATE leagues
-		SET payout_status = 'executed', payout_tx_hash = $2, payouts_executed_at = NOW(), updated_at = NOW()
-		WHERE id = $1
-	`, league.ID, txHash); err != nil {
-		return fmt.Errorf("failed to update league payout status: %w", err)
+	updated, err := deps.markPayoutExecuted(ctx, league.ID, txHash)
+	if err != nil || !updated {
+		log.Printf("[oracle] MANUAL CHECK: league %s paid out in tx %s but was not marked executed (updated=%t, err=%v); left in 'executing'", league.ID, txHash, updated, err)
+		if err != nil {
+			return fmt.Errorf("failed to update league payout status: %w", err)
+		}
+		return fmt.Errorf("league %s was not in 'executing' when marking tx %s executed", league.ID, txHash)
 	}
 
 	for _, r := range resolved {
-		if _, err := s.db.Exec(ctx, `
-			UPDATE league_members
-			SET final_rank = $1, payout_amount_cents = $2, payout_tx_hash = $3, payout_paid_at = NOW(), updated_at = NOW()
-			WHERE league_id = $4 AND roster_id = $5
-		`, r.place, r.amountCents, txHash, league.ID, r.member.RosterID); err != nil {
+		if err := deps.recordMemberPayout(ctx, league.ID, r.member.RosterID, r.place, r.amountCents, txHash); err != nil {
 			log.Printf("[oracle] failed to update member %s payout record: %v", r.member.DisplayName, err)
 		}
 	}
